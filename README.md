@@ -67,7 +67,7 @@ dotnet build src\EnvironmentComparison\EnvironmentComparison.csproj -c Release
 
 The release build creates:
 
-- `artifacts/EnvironmentComparison.XrmToolBox.1.0.0.4.nupkg`
+- `artifacts/EnvironmentComparison.XrmToolBox.1.0.0.5.nupkg`
 - `src/EnvironmentComparison/bin/Release/net48/EnvironmentComparison.dll`
 
 All tests use synthetic objects or a recording `IOrganizationService`. They do not authenticate to or contact Dataverse.

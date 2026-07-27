@@ -48,6 +48,33 @@ namespace EnvironmentComparison.Tests
         }
 
         [TestMethod]
+        public void FormFallbackUsesFormIdRatherThanFormIdUnique()
+        {
+            var formId = Guid.Parse("12345678-1234-1234-1234-1234567890ab");
+            var environmentA = new RecordingService();
+            var environmentB = new RecordingService();
+            environmentA.RetrieveResults["systemform"] = Forms(formId, Guid.NewGuid());
+            environmentB.RetrieveResults["systemform"] = Forms(formId, Guid.NewGuid());
+
+            var snapshotA = new DataverseMetadataService().LoadSnapshot(
+                environmentA,
+                ComparisonAreas.Forms,
+                false);
+            var snapshotB = new DataverseMetadataService().LoadSnapshot(
+                environmentB,
+                ComparisonAreas.Forms,
+                false);
+
+            Assert.AreEqual(1, snapshotA.Forms.Count);
+            Assert.AreEqual(1, snapshotB.Forms.Count);
+            Assert.AreEqual($"account|id:{formId:D}", snapshotA.Forms[0].Key);
+            Assert.AreEqual(snapshotA.Forms[0].Key, snapshotB.Forms[0].Key);
+            CollectionAssert.DoesNotContain(
+                environmentA.RetrievedQueries.Single().ColumnSet.Columns,
+                "formidunique");
+        }
+
+        [TestMethod]
         public void MapsTableAndImportantColumnMetadataWithoutManagedState()
         {
             var entityMetadata = new EntityMetadata
@@ -170,6 +197,17 @@ namespace EnvironmentComparison.Tests
             return metadata;
         }
 
+        private static EntityCollection Forms(Guid formId, Guid formIdUnique)
+        {
+            var form = new Entity("systemform", formId);
+            form["formid"] = formId;
+            form["formidunique"] = formIdUnique;
+            form["objecttypecode"] = "account";
+            form["name"] = "Information";
+            form["formxml"] = "<form />";
+            return new EntityCollection(new List<Entity> { form });
+        }
+
         private sealed class RecordingService : IOrganizationService
         {
             public EntityMetadata[] EntityMetadata { get; set; } = Array.Empty<EntityMetadata>();
@@ -177,6 +215,11 @@ namespace EnvironmentComparison.Tests
             public List<OrganizationRequest> ExecuteRequests { get; } = new List<OrganizationRequest>();
 
             public List<string> RetrievedEntityNames { get; } = new List<string>();
+
+            public List<QueryExpression> RetrievedQueries { get; } = new List<QueryExpression>();
+
+            public Dictionary<string, EntityCollection> RetrieveResults { get; } =
+                new Dictionary<string, EntityCollection>(StringComparer.OrdinalIgnoreCase);
 
             public int WriteAttempts { get; private set; }
 
@@ -190,8 +233,12 @@ namespace EnvironmentComparison.Tests
 
             public EntityCollection RetrieveMultiple(QueryBase query)
             {
-                RetrievedEntityNames.Add(((QueryExpression)query).EntityName);
-                return new EntityCollection();
+                var expression = (QueryExpression)query;
+                RetrievedEntityNames.Add(expression.EntityName);
+                RetrievedQueries.Add(expression);
+                return RetrieveResults.TryGetValue(expression.EntityName, out var result)
+                    ? result
+                    : new EntityCollection();
             }
 
             public Guid Create(Entity entity)

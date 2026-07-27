@@ -22,7 +22,7 @@ if (-not (Test-Path -LiteralPath $xrmToolBoxExecutable -PathType Leaf)) {
     throw "XrmToolBox.exe was not found in: $resolvedXrmToolBoxPath"
 }
 
-if (Get-Process -Name 'XrmToolBox' -ErrorAction SilentlyContinue) {
+if (Get-Process -Name 'XrmToolBox' -ErrorAction SilentlyContinue) { 
     throw 'XrmToolBox is running. Close it before installing the rebuilt plugin.'
 }
 

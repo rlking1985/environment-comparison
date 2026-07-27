@@ -24,7 +24,7 @@ If an A-only and B-only column on the same table have the same display name, typ
 
 ## Forms
 
-This compares system forms associated with tables. Formatting-only XML differences are ignored. A changed grid fingerprint means the normalized form definition differs; CSV export includes the complete normalized XML from both environments.
+This compares system forms associated with tables. Forms are matched by `UniqueName` when it is populated and otherwise by the System Form component ID (`formid`). The environment-specific `formidunique` value is not used. Formatting-only XML differences are ignored. A changed grid fingerprint means the normalized form definition differs; CSV export includes the complete normalized XML from both environments.
 
 ## System views
 

@@ -169,7 +169,6 @@ namespace EnvironmentComparison.Services
             {
                 ColumnSet = new ColumnSet(
                     "formid",
-                    "formidunique",
                     "name",
                     "description",
                     "type",
@@ -190,10 +189,10 @@ namespace EnvironmentComparison.Services
 
                 var name = EntityValue(entity, "name");
                 var uniqueName = EntityValue(entity, "uniquename");
-                var stableId = EntityGuid(entity, "formidunique") ?? entity.Id;
+                var formId = EntityGuid(entity, "formid") ?? entity.Id;
                 var key = !string.IsNullOrWhiteSpace(uniqueName)
                     ? $"{table}|unique:{uniqueName.Trim().ToLowerInvariant()}"
-                    : $"{table}|id:{stableId:D}";
+                    : $"{table}|id:{formId:D}";
                 var properties = new Dictionary<string, string>(StringComparer.Ordinal)
                 {
                     ["Name"] = name,
