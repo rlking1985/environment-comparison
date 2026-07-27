@@ -1,0 +1,9 @@
+# Environment Comparison
+
+Environment Comparison is a read-only XrmToolBox tool for comparing Dataverse table, column, form, and system-view metadata between two saved connections.
+
+It reports missing components, table classification (`Standard`, `Intersect`, or `BPF`), display-name changes, schema and type mismatches, and important metadata settings such as requirement level, auditing, field security, create/read/update availability, maximum length, precision, formats, lookup targets, choices, autonumber formats, formulas, forms, and system views.
+
+The tool deliberately excludes records, personal views, solution layers, and managed-versus-unmanaged status. It uses metadata retrieval and read-only queries against `systemform` and `savedquery`. There is no create, update, delete, associate, disassociate, import, export, publish, or other Dataverse write path.
+
+Choose **Environment A** and **Environment B**, select the comparison areas, then select **Compare metadata**. Published metadata is compared by default; including unpublished metadata is an explicit option. Formula, form, and view XML is normalized to ignore formatting-only differences. The grid shows compact fingerprints and CSV export includes complete normalized definitions. Values longer than Excel's cell limit are preserved across numbered Environment A/B columns.

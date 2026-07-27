@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <OutputType>Library</OutputType>
+    <AssemblyName>EnvironmentComparison</AssemblyName>
+    <RootNamespace>EnvironmentComparison</RootNamespace>
+    <Version>1.0.0.3</Version>
+    <AssemblyVersion>1.0.0.3</AssemblyVersion>
+    <FileVersion>1.0.0.3</FileVersion>
+    <Company>Ross King</Company>
+    <Description>Compare Dataverse table, column, form, and system-view metadata between two environments.</Description>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageOutputPath>$(MSBuildThisFileDirectory)..\..\artifacts</PackageOutputPath>
+    <NuspecFile>EnvironmentComparison.nuspec</NuspecFile>
+    <NuspecBasePath>$(MSBuildThisFileDirectory)</NuspecBasePath>
+    <NuspecProperties>version=$(Version);configuration=$(Configuration)</NuspecProperties>
+    <!-- XrmToolBox registration still validates legacy iconUrl/licenseUrl metadata. -->
+    <NoWarn>$(NoWarn);NU5048;NU5125;NU5128</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MscrmTools.Xrm.Connection" Version="1.2025.9.64" />
+    <PackageReference Include="XrmToolBoxPackage" Version="1.2025.10.74" />
+  </ItemGroup>
+</Project>

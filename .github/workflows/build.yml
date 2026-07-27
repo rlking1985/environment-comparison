@@ -1,0 +1,27 @@
+name: build
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore
+        run: dotnet restore EnvironmentComparison.sln
+      - name: Test
+        run: dotnet test EnvironmentComparison.sln -c Release --no-restore
+      - name: Build and package
+        run: dotnet build src/EnvironmentComparison/EnvironmentComparison.csproj -c Release --no-restore
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: EnvironmentComparison-package
+          path: artifacts/*.nupkg
+
