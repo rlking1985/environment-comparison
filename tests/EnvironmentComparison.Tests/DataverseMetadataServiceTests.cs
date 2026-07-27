@@ -51,10 +51,12 @@ namespace EnvironmentComparison.Tests
         public void FormFallbackUsesFormIdRatherThanFormIdUnique()
         {
             var formId = Guid.Parse("12345678-1234-1234-1234-1234567890ab");
+            var formIdUniqueA = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+            var formIdUniqueB = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
             var environmentA = new RecordingService();
             var environmentB = new RecordingService();
-            environmentA.RetrieveResults["systemform"] = Forms(formId, Guid.NewGuid());
-            environmentB.RetrieveResults["systemform"] = Forms(formId, Guid.NewGuid());
+            environmentA.RetrieveResults["systemform"] = Forms(formId, formIdUniqueA);
+            environmentB.RetrieveResults["systemform"] = Forms(formId, formIdUniqueB);
 
             var snapshotA = new DataverseMetadataService().LoadSnapshot(
                 environmentA,
@@ -69,7 +71,10 @@ namespace EnvironmentComparison.Tests
             Assert.AreEqual(1, snapshotB.Forms.Count);
             Assert.AreEqual($"account|id:{formId:D}", snapshotA.Forms[0].Key);
             Assert.AreEqual(snapshotA.Forms[0].Key, snapshotB.Forms[0].Key);
-            CollectionAssert.DoesNotContain(
+            Assert.AreEqual(formIdUniqueA.ToString("D"), snapshotA.Forms[0].GetProperty("Form ID unique"));
+            Assert.AreEqual(formIdUniqueB.ToString("D"), snapshotB.Forms[0].GetProperty("Form ID unique"));
+            Assert.AreEqual("\r\n<form />\r\n", snapshotA.Forms[0].GetProperty("Raw Form XML"));
+            CollectionAssert.Contains(
                 environmentA.RetrievedQueries.Single().ColumnSet.Columns,
                 "formidunique");
         }
@@ -103,6 +108,14 @@ namespace EnvironmentComparison.Tests
                         }
                     }
                 });
+            typeof(EntityMetadata)
+                .GetProperty("IsCustomEntity")!
+                .GetSetMethod(true)!
+                .Invoke(entityMetadata, new object[] { (bool?)true });
+            typeof(AttributeMetadata)
+                .GetProperty("IsCustomAttribute")!
+                .GetSetMethod(true)!
+                .Invoke(entityMetadata.Attributes[0], new object[] { (bool?)true });
             var service = new RecordingService
             {
                 EntityMetadata = new[] { entityMetadata }
@@ -116,11 +129,13 @@ namespace EnvironmentComparison.Tests
             Assert.AreEqual(1, snapshot.Tables.Count);
             Assert.AreEqual("Student", snapshot.Tables[0].DisplayName);
             Assert.AreEqual("Standard", snapshot.Tables[0].Classification);
+            Assert.AreEqual("Yes", snapshot.Tables[0].CustomTable);
             Assert.AreEqual("UserOwned", snapshot.Tables[0].GetProperty("Ownership type"));
             Assert.AreEqual("True", snapshot.Tables[0].GetProperty("Audit enabled"));
             Assert.AreEqual(1, snapshot.Tables[0].Columns.Count);
             Assert.AreEqual("100", snapshot.Tables[0].Columns[0].GetProperty("Maximum length"));
             Assert.AreEqual("ApplicationRequired", snapshot.Tables[0].Columns[0].GetProperty("Requirement level"));
+            Assert.AreEqual("Yes", snapshot.Tables[0].Columns[0].CustomComponent);
             Assert.IsFalse(snapshot.Tables[0].Properties.ContainsKey("Managed"));
             Assert.IsFalse(snapshot.Tables[0].Columns[0].Properties.ContainsKey("Managed"));
         }
@@ -204,7 +219,7 @@ namespace EnvironmentComparison.Tests
             form["formidunique"] = formIdUnique;
             form["objecttypecode"] = "account";
             form["name"] = "Information";
-            form["formxml"] = "<form />";
+            form["formxml"] = "\r\n<form />\r\n";
             return new EntityCollection(new List<Entity> { form });
         }
 

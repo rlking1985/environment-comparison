@@ -27,6 +27,8 @@ The area flags and component models are intentionally separate so later versions
 - Formula, form, and view XML is normalized before comparison so indentation, line-ending, and attribute-order differences do not create noise.
 - View Layout XML comparison ignores only the root `grid/@object` code because Dataverse can assign different table object type codes in each environment.
 - The result grid uses compact SHA-256 fingerprints for changed XML definitions; CSV export contains the complete normalized XML from both environments.
+- The result grid and differences CSV include `Custom table` and `Custom component` context without treating managed state as custom status.
+- A temporary background `Export raw metadata` action exports every loaded snapshot property, including exact source form/view XML and identity fields, for diagnostics.
 - CSV values are quoted and spreadsheet formulas are neutralized.
 - Values longer than Excel's cell limit are split across numbered Environment A/B columns. Normal-sized exports keep the standard 12-column layout.
 
@@ -67,7 +69,7 @@ dotnet build src\EnvironmentComparison\EnvironmentComparison.csproj -c Release
 
 The release build creates:
 
-- `artifacts/EnvironmentComparison.XrmToolBox.1.0.0.5.nupkg`
+- `artifacts/EnvironmentComparison.XrmToolBox.1.0.0.7.nupkg`
 - `src/EnvironmentComparison/bin/Release/net48/EnvironmentComparison.dll`
 
 All tests use synthetic objects or a recording `IOrganizationService`. They do not authenticate to or contact Dataverse.

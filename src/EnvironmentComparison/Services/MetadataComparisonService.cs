@@ -236,7 +236,9 @@ namespace EnvironmentComparison.Services
                         missingInB
                             ? "The form exists in Environment A but is missing from Environment B."
                             : "The form exists in Environment B but is missing from Environment A.",
-                        TableClassification(form.TableLogicalName, tablesA, tablesB)));
+                        TableClassification(form.TableLogicalName, tablesA, tablesB),
+                        customTable: TableCustomStatus(form.TableLogicalName, tablesA, tablesB),
+                        customComponent: "Unknown"));
                     continue;
                 }
 
@@ -245,6 +247,8 @@ namespace EnvironmentComparison.Services
                     formA!.TableLogicalName,
                     TableDisplayName(formA.TableLogicalName, tablesA, tablesB),
                     TableClassification(formA.TableLogicalName, tablesA, tablesB),
+                    TableCustomStatus(formA.TableLogicalName, tablesA, tablesB),
+                    "Unknown",
                     formA.Key,
                     Prefer(formA.Name, formB!.Name),
                     formA.GetProperty,
@@ -285,7 +289,9 @@ namespace EnvironmentComparison.Services
                         missingInB
                             ? "The system view exists in Environment A but is missing from Environment B."
                             : "The system view exists in Environment B but is missing from Environment A.",
-                        TableClassification(view.TableLogicalName, tablesA, tablesB)));
+                        TableClassification(view.TableLogicalName, tablesA, tablesB),
+                        customTable: TableCustomStatus(view.TableLogicalName, tablesA, tablesB),
+                        customComponent: "Unknown"));
                     continue;
                 }
 
@@ -294,6 +300,8 @@ namespace EnvironmentComparison.Services
                     viewA!.TableLogicalName,
                     TableDisplayName(viewA.TableLogicalName, tablesA, tablesB),
                     TableClassification(viewA.TableLogicalName, tablesA, tablesB),
+                    TableCustomStatus(viewA.TableLogicalName, tablesA, tablesB),
+                    "Unknown",
                     viewA.Key,
                     Prefer(viewA.Name, viewB!.Name),
                     viewA.GetProperty,
@@ -308,6 +316,8 @@ namespace EnvironmentComparison.Services
             string tableLogicalName,
             string tableDisplayName,
             string tableClassification,
+            string customTable,
+            string customComponent,
             string componentKey,
             string componentName,
             Func<string, string> valueA,
@@ -340,7 +350,9 @@ namespace EnvironmentComparison.Services
                     $"{scope} setting '{property.Key}' is different.",
                     tableClassification,
                     definition ? DataverseMetadataService.DefinitionFingerprint(first) : null,
-                    definition ? DataverseMetadataService.DefinitionFingerprint(second) : null));
+                    definition ? DataverseMetadataService.DefinitionFingerprint(second) : null,
+                    customTable,
+                    customComponent));
             }
         }
 
@@ -370,6 +382,20 @@ namespace EnvironmentComparison.Services
             return CombinedClassification(classificationA, classificationB);
         }
 
+        private static string TableCustomStatus(
+            string logicalName,
+            IReadOnlyDictionary<string, TableMetadataInfo> tablesA,
+            IReadOnlyDictionary<string, TableMetadataInfo> tablesB)
+        {
+            var customA = tablesA.TryGetValue(logicalName, out var tableA)
+                ? tableA.CustomTable
+                : string.Empty;
+            var customB = tablesB.TryGetValue(logicalName, out var tableB)
+                ? tableB.CustomTable
+                : string.Empty;
+            return CombinedContext(customA, customB);
+        }
+
         private static ComparisonIssue PresenceIssue(TableMetadataInfo table, DifferenceKind kind)
         {
             var missingInB = kind == DifferenceKind.MissingInEnvironmentB;
@@ -387,7 +413,9 @@ namespace EnvironmentComparison.Services
                 missingInB
                     ? "The table exists in Environment A but is missing from Environment B."
                     : "The table exists in Environment B but is missing from Environment A.",
-                table.Classification);
+                table.Classification,
+                customTable: table.CustomTable,
+                customComponent: table.CustomTable);
         }
 
         private static void CompareProperties(
@@ -416,7 +444,9 @@ namespace EnvironmentComparison.Services
                     valueA,
                     valueB,
                     $"Table setting '{property.Key}' is different.",
-                    CombinedClassification(tableA.Classification, tableB.Classification)));
+                    CombinedClassification(tableA.Classification, tableB.Classification),
+                    customTable: CombinedContext(tableA.CustomTable, tableB.CustomTable),
+                    customComponent: CombinedContext(tableA.CustomTable, tableB.CustomTable)));
             }
         }
 
@@ -478,7 +508,9 @@ namespace EnvironmentComparison.Services
                             : $"Column setting '{property.Key}' is different.",
                         CombinedClassification(tableA.Classification, tableB.Classification),
                         definition ? DataverseMetadataService.DefinitionFingerprint(valueA) : null,
-                        definition ? DataverseMetadataService.DefinitionFingerprint(valueB) : null));
+                        definition ? DataverseMetadataService.DefinitionFingerprint(valueB) : null,
+                        CombinedContext(tableA.CustomTable, tableB.CustomTable),
+                        CombinedContext(columnA.CustomComponent, columnB.CustomComponent)));
                 }
             }
         }
@@ -508,7 +540,9 @@ namespace EnvironmentComparison.Services
                 (missingInB
                     ? "The column exists in Environment A but is missing from Environment B."
                     : "The column exists in Environment B but is missing from Environment A.") + renameText,
-                table.Classification);
+                table.Classification,
+                customTable: table.CustomTable,
+                customComponent: column.CustomComponent);
         }
 
         private static ColumnMetadataInfo? FindRenameCandidate(
@@ -580,6 +614,13 @@ namespace EnvironmentComparison.Services
             if (string.IsNullOrWhiteSpace(first)) return second;
             if (string.IsNullOrWhiteSpace(second) || Equal(first, second)) return first;
             return $"{first} / {second}";
+        }
+
+        private static string CombinedContext(string first, string second)
+        {
+            if (string.IsNullOrWhiteSpace(first)) return second;
+            if (string.IsNullOrWhiteSpace(second) || Equal(first, second)) return first;
+            return $"A: {first} / B: {second}";
         }
 
         private static bool IsTrue(string value) => value.Equals("True", StringComparison.OrdinalIgnoreCase);

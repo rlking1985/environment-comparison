@@ -34,6 +34,7 @@ namespace EnvironmentComparison.Ui
         private readonly DataverseMetadataService _metadataService = new DataverseMetadataService();
         private readonly MetadataComparisonService _comparisonService = new MetadataComparisonService();
         private readonly CsvExportService _csvService = new CsvExportService();
+        private readonly RawMetadataExportService _rawMetadataExportService = new RawMetadataExportService();
         private readonly Panel _viewport = new Panel();
         private readonly TableLayoutPanel _rootLayout = new TableLayoutPanel();
         private readonly TableLayoutPanel _environmentLayout = new TableLayoutPanel();
@@ -45,6 +46,7 @@ namespace EnvironmentComparison.Ui
         private readonly Button _environmentBButton = new Button();
         private readonly Button _compareButton = new Button();
         private readonly Button _exportButton = new Button();
+        private readonly Button _rawExportButton = new Button();
         private readonly Button _clearFiltersButton = new Button();
         private readonly CheckBox _tablesCheckBox = new CheckBox();
         private readonly CheckBox _columnsCheckBox = new CheckBox();
@@ -309,11 +311,16 @@ namespace EnvironmentComparison.Ui
             StyleSecondaryButton(_exportButton);
             _exportButton.Enabled = false;
             _exportButton.Click += (_, __) => ExportCsv();
+            _rawExportButton.Text = "Export raw metadata";
+            StyleSecondaryButton(_rawExportButton);
+            _rawExportButton.Enabled = false;
+            _rawExportButton.Click += (_, __) => ExportRawMetadata();
+            _toolTip.SetToolTip(_rawExportButton, "Temporary diagnostic export of every loaded metadata property from both environments, not only differences.");
             _unpublishedCheckBox.AutoSize = true;
             _unpublishedCheckBox.Text = "Include unpublished metadata";
             _unpublishedCheckBox.Margin = new Padding(14, 8, 8, 4);
             _toolTip.SetToolTip(_unpublishedCheckBox, "Off compares published definitions, which best represents deployed state. Turn on only when draft customizations must be included.");
-            actions.Controls.AddRange(new Control[] { _compareButton, _exportButton, _unpublishedCheckBox });
+            actions.Controls.AddRange(new Control[] { _compareButton, _exportButton, _rawExportButton, _unpublishedCheckBox });
             layout.Controls.Add(actions, 0, 2);
             return card;
         }
@@ -403,6 +410,8 @@ namespace EnvironmentComparison.Ui
             AddGridColumn("Difference", "Difference", 145);
             AddGridColumn("Table", "Table", 165);
             AddGridColumn("Classification", "Table classification", 105);
+            AddGridColumn("CustomTable", "Custom table", 85);
+            AddGridColumn("CustomComponent", "Custom component", 105);
             AddGridColumn("Component", "Column / form / view", 205);
             AddGridColumn("Property", "Property", 165);
             AddGridColumn("A", "Environment A", 190);
@@ -514,6 +523,7 @@ namespace EnvironmentComparison.Ui
             _summaryLabel.Text = $"Compared {DisplayAreas(_result.EnvironmentA.IncludedAreas)} using {mode} definitions. No changes were made.";
             _activity.Items.Insert(0, $"{DateTime.Now:T} Comparison completed with {_result.Issues.Count:N0} differences. No changes were made.");
             _exportButton.Enabled = _grid.Rows.Count > 0;
+            _rawExportButton.Enabled = true;
         }
 
         private void PopulateGrid()
@@ -526,6 +536,7 @@ namespace EnvironmentComparison.Ui
                 {
                     _resultCountLabel.Text = "No comparison loaded.";
                     _exportButton.Enabled = false;
+                    _rawExportButton.Enabled = false;
                     UpdateDetails();
                     return;
                 }
@@ -539,6 +550,8 @@ namespace EnvironmentComparison.Ui
                         DisplayDifference(issue.Kind),
                         DisplayTable(issue),
                         issue.TableClassification,
+                        issue.CustomTable,
+                        issue.CustomComponent,
                         DisplayComponent(issue),
                         issue.PropertyName,
                         issue.EnvironmentAPreviewValue,
@@ -554,6 +567,7 @@ namespace EnvironmentComparison.Ui
                 var changed = filtered.Count(issue => issue.Kind == DifferenceKind.Changed);
                 _resultCountLabel.Text = $"Showing {filtered.Count:N0} of {_result.Issues.Count:N0} differences  •  Missing in B: {missingB:N0}  •  Missing in A: {missingA:N0}  •  Changed: {changed:N0}";
                 _exportButton.Enabled = !_busy && filtered.Count > 0;
+                _rawExportButton.Enabled = !_busy;
                 if (_grid.Rows.Count > 0)
                 {
                     _grid.Rows[0].Selected = true;
@@ -589,6 +603,8 @@ namespace EnvironmentComparison.Ui
                     issue.TableLogicalName,
                     issue.TableDisplayName,
                     issue.TableClassification,
+                    issue.CustomTable,
+                    issue.CustomComponent,
                     issue.ComponentKey,
                     issue.ComponentName,
                     issue.PropertyName,
@@ -617,6 +633,8 @@ namespace EnvironmentComparison.Ui
                 AddDetail("Difference", DisplayDifference(issue.Kind));
                 AddDetail("Table", DisplayTable(issue));
                 AddDetail("Table classification", issue.TableClassification);
+                AddDetail("Custom table", issue.CustomTable);
+                AddDetail("Custom component", issue.CustomComponent);
                 AddDetail("Component key", issue.ComponentKey);
                 AddDetail("Component name", issue.ComponentName);
                 AddDetail("Property", issue.PropertyName);
@@ -658,6 +676,60 @@ namespace EnvironmentComparison.Ui
                 _activity.Items.Insert(0, $"{DateTime.Now:T} Exported {issues.Count:N0} filtered differences to {dialog.FileName}.");
                 MessageBox.Show(this, $"Exported {issues.Count:N0} differences.", "CSV exported", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
+        }
+
+        private void ExportRawMetadata()
+        {
+            var result = _result;
+            if (result == null)
+            {
+                MessageBox.Show(this, "Run a comparison before exporting raw metadata.", "Nothing to export", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            using (var dialog = new SaveFileDialog
+            {
+                AddExtension = true,
+                DefaultExt = "csv",
+                Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
+                FileName = $"Dataverse-environment-raw-metadata-{DateTime.Now:yyyyMMdd-HHmmss}.csv",
+                OverwritePrompt = true,
+                Title = "Export raw metadata for diagnostics"
+            })
+            {
+                if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                var fileName = dialog.FileName;
+                SetBusy(true);
+                _activity.Items.Insert(0, $"{DateTime.Now:T} Exporting complete raw metadata snapshot...");
+                WorkAsync(new WorkAsyncInfo(
+                    "Exporting raw metadata without changing either environment...",
+                    (_, eventArgs) =>
+                    {
+                        using (var writer = new StreamWriter(fileName, false, new UTF8Encoding(true)))
+                        {
+                            eventArgs.Result = _rawMetadataExportService.Write(writer, result);
+                        }
+                    })
+                {
+                    PostWorkCallBack = eventArgs => RawMetadataExportCompleted(eventArgs, fileName)
+                });
+            }
+        }
+
+        private void RawMetadataExportCompleted(RunWorkerCompletedEventArgs eventArgs, string fileName)
+        {
+            SetBusy(false);
+            if (eventArgs.Error != null)
+            {
+                LogError(eventArgs.Error.ToString());
+                _activity.Items.Insert(0, $"{DateTime.Now:T} Raw metadata export failed: {eventArgs.Error.Message}");
+                MessageBox.Show(this, $"The raw metadata export failed.\r\n\r\n{eventArgs.Error.Message}", "Export failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            var rowCount = (int)eventArgs.Result;
+            _activity.Items.Insert(0, $"{DateTime.Now:T} Exported {rowCount:N0} raw metadata rows to {fileName}.");
+            MessageBox.Show(this, $"Exported {rowCount:N0} raw metadata rows.", "Raw metadata exported", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private ComparisonAreas SelectedAreas
@@ -720,6 +792,7 @@ namespace EnvironmentComparison.Ui
             _summaryLabel.Text = message;
             _resultCountLabel.Text = "No comparison loaded.";
             _exportButton.Enabled = false;
+            _rawExportButton.Enabled = false;
         }
 
         private void ClearFilters()
@@ -743,6 +816,7 @@ namespace EnvironmentComparison.Ui
             _viewsCheckBox.Enabled = !busy;
             _unpublishedCheckBox.Enabled = !busy;
             _exportButton.Enabled = !busy && _grid.Rows.Count > 0;
+            _rawExportButton.Enabled = !busy && _result != null;
             UseWaitCursor = busy;
         }
 

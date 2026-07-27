@@ -24,7 +24,9 @@ namespace EnvironmentComparison.Tests
                 "100, legacy",
                 "50",
                 "Line one\r\nLine two",
-                "Intersect");
+                "Intersect",
+                customTable: "Yes",
+                customComponent: "Yes");
 
             var csv = new CsvExportService().Create(new[] { issue });
 
@@ -32,6 +34,9 @@ namespace EnvironmentComparison.Tests
             StringAssert.Contains(csv, "\"Student \"\"code\"\"\"");
             StringAssert.Contains(csv, "\"Table classification\"");
             StringAssert.Contains(csv, "\"Intersect\"");
+            StringAssert.Contains(csv, "\"Custom table\"");
+            StringAssert.Contains(csv, "\"Custom component\"");
+            StringAssert.Contains(csv, "\"Yes\"");
             StringAssert.Contains(csv, "\"100, legacy\"");
             StringAssert.Contains(csv, "\"Line one\r\nLine two\"");
         }
@@ -89,15 +94,15 @@ namespace EnvironmentComparison.Tests
             var headers = lines[0].Split(',').Select(Unquote).ToArray();
             var values = lines[1].Split(',').Select(Unquote).ToArray();
 
-            Assert.AreEqual(16, headers.Length);
+            Assert.AreEqual(18, headers.Length);
             Assert.AreEqual(headers.Length, values.Length);
-            Assert.AreEqual("Environment A (part 1 of 3)", headers[9]);
-            Assert.AreEqual("Environment A (part 3 of 3)", headers[11]);
-            Assert.AreEqual("Environment B (part 1 of 3)", headers[12]);
-            Assert.AreEqual("Environment B (part 3 of 3)", headers[14]);
-            Assert.IsTrue(values.Skip(9).Take(6).All(value => value.Length <= CsvExportService.ExcelSafeCellLength));
-            Assert.AreEqual(valueA, string.Concat(values.Skip(9).Take(3)));
-            Assert.AreEqual(valueB, string.Concat(values.Skip(12).Take(3)));
+            Assert.AreEqual("Environment A (part 1 of 3)", headers[11]);
+            Assert.AreEqual("Environment A (part 3 of 3)", headers[13]);
+            Assert.AreEqual("Environment B (part 1 of 3)", headers[14]);
+            Assert.AreEqual("Environment B (part 3 of 3)", headers[16]);
+            Assert.IsTrue(values.Skip(11).Take(6).All(value => value.Length <= CsvExportService.ExcelSafeCellLength));
+            Assert.AreEqual(valueA, string.Concat(values.Skip(11).Take(3)));
+            Assert.AreEqual(valueB, string.Concat(values.Skip(14).Take(3)));
         }
 
         [TestMethod]

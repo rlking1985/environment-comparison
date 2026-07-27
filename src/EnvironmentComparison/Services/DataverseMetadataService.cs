@@ -138,6 +138,7 @@ namespace EnvironmentComparison.Services
         {
             var properties = ReadProperties(metadata, TableProperties);
             properties["Table classification"] = ClassifyTable(metadata);
+            properties["Custom table"] = CustomStatus(metadata.IsCustomEntity);
             var columns = includeColumns
                 ? (metadata.Attributes ?? Array.Empty<AttributeMetadata>())
                     .Where(attribute => !string.IsNullOrWhiteSpace(attribute.LogicalName))
@@ -149,6 +150,7 @@ namespace EnvironmentComparison.Services
         private static ColumnMetadataInfo ToColumn(AttributeMetadata metadata)
         {
             var properties = ReadProperties(metadata, ColumnProperties);
+            properties["Custom component"] = CustomStatus(metadata.IsCustomAttribute);
             properties["Formula definition"] = NormalizeDefinition(properties["Formula definition"]);
             var optionSet = ReadRawProperty(metadata, "OptionSet");
             if (optionSet != null)
@@ -161,6 +163,13 @@ namespace EnvironmentComparison.Services
             return new ColumnMetadataInfo(metadata.LogicalName, properties);
         }
 
+        private static string CustomStatus(bool? isCustom)
+        {
+            return isCustom.HasValue
+                ? isCustom.Value ? "Yes" : "No"
+                : "Unknown";
+        }
+
         private static IEnumerable<FormMetadataInfo> LoadForms(
             IOrganizationService service,
             IReadOnlyDictionary<int, string> tableNamesByObjectType)
@@ -169,6 +178,8 @@ namespace EnvironmentComparison.Services
             {
                 ColumnSet = new ColumnSet(
                     "formid",
+                    // Retrieved only for the temporary raw diagnostic export. It is never used as a comparison key.
+                    "formidunique",
                     "name",
                     "description",
                     "type",
@@ -195,12 +206,17 @@ namespace EnvironmentComparison.Services
                     : $"{table}|id:{formId:D}";
                 var properties = new Dictionary<string, string>(StringComparer.Ordinal)
                 {
+                    ["Form ID"] = formId.ToString("D"),
+                    ["Form ID unique"] = EntityValue(entity, "formidunique"),
+                    ["Unique name"] = uniqueName,
+                    ["Object type code"] = EntityValue(entity, "objecttypecode"),
                     ["Name"] = name,
                     ["Description"] = EntityValue(entity, "description"),
                     ["Form type"] = EntityValue(entity, "type"),
                     ["Activation state"] = EntityValue(entity, "formactivationstate"),
                     ["Presentation"] = EntityValue(entity, "formpresentation"),
-                    ["Form XML"] = NormalizeDefinition(EntityValue(entity, "formxml"))
+                    ["Form XML"] = NormalizeDefinition(EntityRawValue(entity, "formxml")),
+                    ["Raw Form XML"] = EntityRawValue(entity, "formxml")
                 };
                 yield return new FormMetadataInfo(key, table, name, properties);
             }
@@ -237,13 +253,18 @@ namespace EnvironmentComparison.Services
                 var key = $"{table}|id:{entity.Id:D}";
                 var properties = new Dictionary<string, string>(StringComparer.Ordinal)
                 {
+                    ["View ID"] = entity.Id.ToString("D"),
+                    ["Returned type code"] = EntityValue(entity, "returnedtypecode"),
                     ["Name"] = name,
                     ["Query type"] = EntityValue(entity, "querytype"),
                     ["Default view"] = EntityValue(entity, "isdefault"),
                     ["Quick find view"] = EntityValue(entity, "isquickfindquery"),
-                    ["Fetch XML"] = NormalizeDefinition(EntityValue(entity, "fetchxml")),
-                    ["Layout XML"] = NormalizeDefinition(EntityValue(entity, "layoutxml")),
-                    ["Column set XML"] = NormalizeDefinition(EntityValue(entity, "columnsetxml")),
+                    ["Fetch XML"] = NormalizeDefinition(EntityRawValue(entity, "fetchxml")),
+                    ["Layout XML"] = NormalizeDefinition(EntityRawValue(entity, "layoutxml")),
+                    ["Column set XML"] = NormalizeDefinition(EntityRawValue(entity, "columnsetxml")),
+                    ["Raw Fetch XML"] = EntityRawValue(entity, "fetchxml"),
+                    ["Raw Layout XML"] = EntityRawValue(entity, "layoutxml"),
+                    ["Raw Column set XML"] = EntityRawValue(entity, "columnsetxml"),
                     ["Advanced group by"] = EntityValue(entity, "advancedgroupby")
                 };
                 yield return new ViewMetadataInfo(key, table, name, properties);
@@ -377,6 +398,16 @@ namespace EnvironmentComparison.Services
             }
 
             return FormatValue(value);
+        }
+
+        private static string EntityRawValue(Entity entity, string attributeName)
+        {
+            if (!entity.Attributes.TryGetValue(attributeName, out var value) || value == null)
+            {
+                return string.Empty;
+            }
+
+            return value is string text ? text : FormatValue(value);
         }
 
         private static Guid? EntityGuid(Entity entity, string attributeName)

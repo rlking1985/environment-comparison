@@ -114,6 +114,8 @@ namespace EnvironmentComparison.Domain
 
         public string Classification => GetProperty("Table classification");
 
+        public string CustomTable => GetProperty("Custom table");
+
         public string GetProperty(string name) => Properties.TryGetValue(name, out var value) ? value : string.Empty;
     }
 
@@ -131,6 +133,8 @@ namespace EnvironmentComparison.Domain
         public IReadOnlyDictionary<string, string> Properties { get; }
 
         public string DisplayName => GetProperty("Display name");
+
+        public string CustomComponent => GetProperty("Custom component");
 
         public string GetProperty(string name) => Properties.TryGetValue(name, out var value) ? value : string.Empty;
     }
@@ -174,7 +178,9 @@ namespace EnvironmentComparison.Domain
             string details,
             string tableClassification = "",
             string? environmentAPreviewValue = null,
-            string? environmentBPreviewValue = null)
+            string? environmentBPreviewValue = null,
+            string customTable = "",
+            string customComponent = "")
         {
             Severity = severity;
             Scope = scope;
@@ -189,6 +195,8 @@ namespace EnvironmentComparison.Domain
             EnvironmentBValue = environmentBValue ?? string.Empty;
             EnvironmentAPreviewValue = environmentAPreviewValue ?? EnvironmentAValue;
             EnvironmentBPreviewValue = environmentBPreviewValue ?? EnvironmentBValue;
+            CustomTable = customTable ?? string.Empty;
+            CustomComponent = customComponent ?? string.Empty;
             Details = details ?? string.Empty;
         }
 
@@ -203,6 +211,10 @@ namespace EnvironmentComparison.Domain
         public string TableDisplayName { get; }
 
         public string TableClassification { get; }
+
+        public string CustomTable { get; }
+
+        public string CustomComponent { get; }
 
         public string ComponentKey { get; }
 

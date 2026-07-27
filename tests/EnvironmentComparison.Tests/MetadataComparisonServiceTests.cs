@@ -97,6 +97,8 @@ namespace EnvironmentComparison.Tests
             StringAssert.StartsWith(formIssue.EnvironmentAValue, "<form");
             StringAssert.StartsWith(formIssue.EnvironmentAPreviewValue, "SHA-256 ");
             Assert.AreEqual("Standard", formIssue.TableClassification);
+            Assert.AreEqual("Yes", formIssue.CustomTable);
+            Assert.AreEqual("Unknown", formIssue.CustomComponent);
             StringAssert.StartsWith(viewIssue.EnvironmentAValue, "<fetch");
             StringAssert.StartsWith(viewIssue.EnvironmentAPreviewValue, "SHA-256 ");
             Assert.IsFalse(result.Issues.Any(issue => issue.Scope == ComparisonScope.Table || issue.Scope == ComparisonScope.Column));
@@ -215,13 +217,13 @@ namespace EnvironmentComparison.Tests
         {
             return new TableMetadataInfo(
                 logicalName,
-                Properties("Display name", logicalName, "Schema name", logicalName, "Table classification", "Standard"),
+                Properties("Display name", logicalName, "Schema name", logicalName, "Table classification", "Standard", "Custom table", "Yes"),
                 columns);
         }
 
         private static ColumnMetadataInfo Column(string logicalName, string displayName, string type, params string[] additionalProperties)
         {
-            var properties = Properties("Display name", displayName, "Attribute type", type, "Requirement level", "None");
+            var properties = Properties("Display name", displayName, "Attribute type", type, "Requirement level", "None", "Custom component", "Yes");
             for (var index = 0; index < additionalProperties.Length; index += 2)
             {
                 properties[additionalProperties[index]] = additionalProperties[index + 1];

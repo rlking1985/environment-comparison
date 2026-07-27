@@ -37,6 +37,13 @@ namespace EnvironmentComparison.Tests
                     .GetField("_grid", BindingFlags.Instance | BindingFlags.NonPublic)
                     !.GetValue(control)!;
                 Assert.AreEqual("Table classification", grid.Columns["Classification"].HeaderText);
+                Assert.AreEqual("Custom table", grid.Columns["CustomTable"].HeaderText);
+                Assert.AreEqual("Custom component", grid.Columns["CustomComponent"].HeaderText);
+                var rawExportButton = (Button)typeof(EnvironmentComparisonControl)
+                    .GetField("_rawExportButton", BindingFlags.Instance | BindingFlags.NonPublic)
+                    !.GetValue(control)!;
+                Assert.AreEqual("Export raw metadata", rawExportButton.Text);
+                Assert.IsFalse(rawExportButton.Enabled);
             }
         }
 

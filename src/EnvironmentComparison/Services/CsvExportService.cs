@@ -20,6 +20,8 @@ namespace EnvironmentComparison.Services
             "Table logical name",
             "Table display name",
             "Table classification",
+            "Custom table",
+            "Custom component",
             "Component key",
             "Component name",
             "Property"
@@ -52,6 +54,8 @@ namespace EnvironmentComparison.Services
                     issue.TableLogicalName,
                     issue.TableDisplayName,
                     issue.TableClassification,
+                    issue.CustomTable,
+                    issue.CustomComponent,
                     issue.ComponentKey,
                     issue.ComponentName,
                     issue.PropertyName
@@ -71,7 +75,7 @@ namespace EnvironmentComparison.Services
             return Escape(value, true);
         }
 
-        private static string Escape(string? value, bool neutralizeSpreadsheetFormula)
+        internal static string Escape(string? value, bool neutralizeSpreadsheetFormula)
         {
             var safe = value ?? string.Empty;
             if (neutralizeSpreadsheetFormula

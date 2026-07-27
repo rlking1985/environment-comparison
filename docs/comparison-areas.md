@@ -16,6 +16,8 @@ Each result includes a **Table classification** value:
 
 Managed state, solution layer, metadata ID, and introduced version are deliberately excluded.
 
+Every result also includes **Custom table** and **Custom component** context. Custom table comes from `EntityMetadata.IsCustomEntity`. Column rows use `AttributeMetadata.IsCustomAttribute` for Custom component. A table row uses the table value for both columns. Form and view component status is shown as `Unknown` because managed state does not reliably identify whether those components are custom.
+
 ## Columns
 
 Use this for missing columns, renamed display labels, and important column settings. A required or primary column missing in Environment B is Critical; another missing column is High.
@@ -33,3 +35,9 @@ This compares `savedquery` definitions, including FetchXML, layout XML, and colu
 ## Published versus unpublished
 
 Leave **Include unpublished metadata** off when checking what is deployed and available to normal users. Turn it on when reviewing draft customizations that have not yet been published.
+
+## Temporary raw metadata export
+
+After a comparison, **Export raw metadata** writes an unfiltered diagnostic CSV containing every loaded property from Environment A and Environment B, even when the values are identical. Form rows include `formid`, `formidunique`, `UniqueName`, object type, the exact retrieved FormXML, and the normalized Form XML used by the comparison. View rows similarly include identifiers and exact retrieved FetchXML, LayoutXML, and column-set XML alongside normalized values. `formidunique` is diagnostic only and is never used as the form comparison key.
+
+The export runs in the background, splits oversized values into Excel-safe numbered columns, and retrieves no table records. It is intentionally temporary debugging functionality.
