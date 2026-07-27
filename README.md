@@ -11,7 +11,7 @@ Each area can be selected independently before a comparison:
 - **Table metadata** — classification (`Standard`, `Intersect`, or `BPF`), schema/display names, ownership, primary columns, auditing, change tracking, activities, notes, queues, connections, document management, duplicate detection, quick create, SLA, and related table behavior. No table records are read.
 - **Columns** — missing columns, possible renamed/recreated columns, display-name renames, data type, requirement level, auditing, field security, create/read/update behavior, search/form/grid availability, maximum length, ranges, precision, format, autonumber, lookup targets, choices, date/time behavior, file/image settings, and formulas.
 - **Forms** — missing system forms, form type/state/presentation, and normalized form-definition differences.
-- **System views** — missing system views, query type/default/quick-find behavior, and normalized FetchXML, layout, and column-set differences. Personal views are excluded.
+- **System views** — missing system views, query type/default/quick-find behavior, and normalized FetchXML, layout, and column-set differences. Environment-specific root layout object type codes are ignored. Personal views are excluded.
 
 The area flags and component models are intentionally separate so later versions can add relationships, keys, option sets, business rules, charts, dashboards, or other component types without changing the connection workflow.
 
@@ -25,6 +25,7 @@ The area flags and component models are intentionally separate so later versions
 - Managed/unmanaged status, solution layers, component version stamps, and metadata IDs are not compared.
 - Published definitions are compared by default. Including unpublished metadata is explicit.
 - Formula, form, and view XML is normalized before comparison so indentation, line-ending, and attribute-order differences do not create noise.
+- View Layout XML comparison ignores only the root `grid/@object` code because Dataverse can assign different table object type codes in each environment.
 - The result grid uses compact SHA-256 fingerprints for changed XML definitions; CSV export contains the complete normalized XML from both environments.
 - CSV values are quoted and spreadsheet formulas are neutralized.
 - Values longer than Excel's cell limit are split across numbered Environment A/B columns. Normal-sized exports keep the standard 12-column layout.
@@ -66,7 +67,7 @@ dotnet build src\EnvironmentComparison\EnvironmentComparison.csproj -c Release
 
 The release build creates:
 
-- `artifacts/EnvironmentComparison.XrmToolBox.1.0.0.3.nupkg`
+- `artifacts/EnvironmentComparison.XrmToolBox.1.0.0.4.nupkg`
 - `src/EnvironmentComparison/bin/Release/net48/EnvironmentComparison.dll`
 
 All tests use synthetic objects or a recording `IOrganizationService`. They do not authenticate to or contact Dataverse.

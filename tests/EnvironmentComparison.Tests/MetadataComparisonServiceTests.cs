@@ -103,6 +103,47 @@ namespace EnvironmentComparison.Tests
         }
 
         [TestMethod]
+        public void IgnoresEnvironmentSpecificViewLayoutObjectTypeCodes()
+        {
+            var table = Table("ata_academicreportingcriteria");
+            var layoutA = DataverseMetadataService.NormalizeDefinition(
+                "<grid name='resultset' object='12801'><row id='ata_academicreportingcriteriaid'><cell name='ata_name' width='300'/></row></grid>");
+            var layoutB = DataverseMetadataService.NormalizeDefinition(
+                "<grid name='resultset' object='22657'><row id='ata_academicreportingcriteriaid'><cell name='ata_name' width='300'/></row></grid>");
+            var viewA = new ViewMetadataInfo("ata_academicreportingcriteria|id:1", table.LogicalName, "Active criteria", Properties("Layout XML", layoutA));
+            var viewB = new ViewMetadataInfo("ata_academicreportingcriteria|id:1", table.LogicalName, "Active criteria", Properties("Layout XML", layoutB));
+
+            var result = _service.Compare(
+                new EnvironmentMetadataSnapshot(new[] { table }, views: new[] { viewA }, includedAreas: ComparisonAreas.Views),
+                new EnvironmentMetadataSnapshot(new[] { table }, views: new[] { viewB }, includedAreas: ComparisonAreas.Views));
+
+            Assert.IsFalse(result.Issues.Any(issue => issue.PropertyName == "Layout XML"));
+        }
+
+        [TestMethod]
+        public void ReportsRealViewLayoutChangesAndExportsOriginalObjectTypeCodes()
+        {
+            var table = Table("mshied_academicsubject");
+            var layoutA = DataverseMetadataService.NormalizeDefinition(
+                "<grid name='resultset' object='11609'><row id='mshied_academicsubjectid'><cell name='mshied_name' width='300'/><cell name='ata_schoolcampus' width='175'/></row></grid>");
+            var layoutB = DataverseMetadataService.NormalizeDefinition(
+                "<grid name='resultset' object='11358'><row id='mshied_academicsubjectid'><cell name='mshied_name' width='300'/></row></grid>");
+            var viewA = new ViewMetadataInfo("mshied_academicsubject|id:1", table.LogicalName, "Active Academic Subjects", Properties("Layout XML", layoutA));
+            var viewB = new ViewMetadataInfo("mshied_academicsubject|id:1", table.LogicalName, "Active Academic Subjects", Properties("Layout XML", layoutB));
+
+            var result = _service.Compare(
+                new EnvironmentMetadataSnapshot(new[] { table }, views: new[] { viewA }, includedAreas: ComparisonAreas.Views),
+                new EnvironmentMetadataSnapshot(new[] { table }, views: new[] { viewB }, includedAreas: ComparisonAreas.Views));
+            var issue = result.Issues.Single(item => item.PropertyName == "Layout XML");
+            var csv = new CsvExportService().Create(new[] { issue });
+
+            StringAssert.Contains(issue.EnvironmentAValue, "object=\"11609\"");
+            StringAssert.Contains(issue.EnvironmentBValue, "object=\"11358\"");
+            StringAssert.Contains(csv, "object=\"\"11609\"\"");
+            StringAssert.Contains(csv, "object=\"\"11358\"\"");
+        }
+
+        [TestMethod]
         public void WhitespaceOnlyFormulaDefinitionsAreIgnored()
         {
             var formulaA = DataverseMetadataService.NormalizeDefinition(

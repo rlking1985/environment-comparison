@@ -27,6 +27,8 @@ Formula definitions, forms, and views are normalized before comparison, so inden
 
 CSV export contains the complete normalized Environment A and Environment B XML values, not the fingerprints. This allows the definitions to be inspected or diffed outside the tool without making the grid hold and render large XML values.
 
+For view Layout XML, the environment-specific root `grid/@object` value is ignored when deciding whether a difference exists. If another layout setting differs, the issue is retained and the CSV still contains the original complete XML from both environments.
+
 ## CSV safety
 
 Every field is quoted. Values beginning with spreadsheet formula characters are prefixed with an apostrophe to prevent formula execution when the file is opened in Excel.

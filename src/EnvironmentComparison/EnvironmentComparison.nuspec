@@ -14,7 +14,7 @@
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>Read-only comparison of Dataverse table, column, form, and system-view metadata between two environments. Highlights missing components and important definition differences while excluding managed-versus-unmanaged noise.</description>
     <summary>Compare important Dataverse metadata safely between environments.</summary>
-    <releaseNotes>Adds Standard, Intersect, and BPF table classification. XML definitions are normalized to ignore formatting-only differences, shown as compact fingerprints in the preview, and exported in full to CSV. Oversized values are split into numbered Excel-safe columns without losing data.</releaseNotes>
+    <releaseNotes>Adds Standard, Intersect, and BPF table classification. XML definitions are normalized to ignore formatting-only differences, shown as compact fingerprints in the preview, and exported in full to CSV. Oversized values are split into numbered Excel-safe columns without losing data. Environment-specific root grid object type codes are ignored when comparing view Layout XML.</releaseNotes>
     <copyright>Copyright © 2026 Ross King</copyright>
     <tags>XrmToolBox Plugins Dataverse Dynamics365 Metadata Tables Columns Comparison</tags>
     <dependencies>

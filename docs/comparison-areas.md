@@ -28,7 +28,7 @@ This compares system forms associated with tables. Formatting-only XML differenc
 
 ## System views
 
-This compares `savedquery` definitions, including FetchXML, layout XML, and column-set XML. Personal views (`userquery`) are intentionally excluded because they are user-owned rather than deployed solution components. The grid uses fingerprints for changed XML, while CSV export includes the complete normalized definitions.
+This compares `savedquery` definitions, including FetchXML, layout XML, and column-set XML. The root `grid/@object` value is ignored during Layout XML equality checks because table object type codes can differ between environments. Every other layout attribute, row, cell, order, and width remains significant. Personal views (`userquery`) are intentionally excluded because they are user-owned rather than deployed solution components. The grid uses fingerprints for changed XML, while CSV export includes the complete normalized definitions, including the original object codes when another genuine layout difference exists.
 
 ## Published versus unpublished
 

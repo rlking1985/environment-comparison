@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Xml.Linq;
 using EnvironmentComparison.Domain;
 
 namespace EnvironmentComparison.Services
@@ -538,11 +539,39 @@ namespace EnvironmentComparison.Services
         private static bool Equal(string first, string second) =>
             string.Equals(first ?? string.Empty, second ?? string.Empty, StringComparison.OrdinalIgnoreCase);
 
-        private static bool EqualProperty(string propertyName, string first, string second) =>
-            string.Equals(
-                first ?? string.Empty,
-                second ?? string.Empty,
+        private static bool EqualProperty(string propertyName, string first, string second)
+        {
+            var comparisonA = ComparisonValue(propertyName, first);
+            var comparisonB = ComparisonValue(propertyName, second);
+            return string.Equals(
+                comparisonA,
+                comparisonB,
                 IsDefinitionProperty(propertyName) ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static string ComparisonValue(string propertyName, string value)
+        {
+            var safeValue = value ?? string.Empty;
+            if (!propertyName.Equals("Layout XML", StringComparison.Ordinal) || safeValue.Length == 0)
+            {
+                return safeValue;
+            }
+
+            try
+            {
+                var document = XDocument.Parse(safeValue, LoadOptions.None);
+                if (document.Root?.Name.LocalName == "grid")
+                {
+                    document.Root.Attribute("object")?.Remove();
+                }
+
+                return document.ToString(SaveOptions.DisableFormatting);
+            }
+            catch
+            {
+                return safeValue;
+            }
+        }
 
         internal static bool IsDefinitionProperty(string propertyName) => DefinitionProperties.Contains(propertyName);
 
