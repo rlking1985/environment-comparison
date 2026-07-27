@@ -20,8 +20,6 @@ namespace EnvironmentComparison.Services
             "Table logical name",
             "Table display name",
             "Table classification",
-            "Custom table",
-            "Custom component",
             "Component key",
             "Component name",
             "Property"
@@ -54,8 +52,6 @@ namespace EnvironmentComparison.Services
                     issue.TableLogicalName,
                     issue.TableDisplayName,
                     issue.TableClassification,
-                    issue.CustomTable,
-                    issue.CustomComponent,
                     issue.ComponentKey,
                     issue.ComponentName,
                     issue.PropertyName

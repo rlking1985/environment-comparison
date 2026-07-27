@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using EnvironmentComparison.Domain;
 using EnvironmentComparison.Services;
+using Microsoft.Crm.Sdk.Messages;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Messages;
@@ -48,6 +49,35 @@ namespace EnvironmentComparison.Tests
         }
 
         [TestMethod]
+        public void IncludeUnpublishedUsesTheReadOnlyUnpublishedRequestForFormsAndViews()
+        {
+            var formId = Guid.Parse("12345678-1234-1234-1234-1234567890ab");
+            var viewId = Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+            var service = new RecordingService();
+            service.UnpublishedRetrieveResults["systemform"] = Forms(
+                formId,
+                Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"));
+            var view = new Entity("savedquery", viewId);
+            view["returnedtypecode"] = "account";
+            view["name"] = "Active Accounts";
+            service.UnpublishedRetrieveResults["savedquery"] = new EntityCollection(new List<Entity> { view });
+
+            var snapshot = new DataverseMetadataService().LoadSnapshot(
+                service,
+                ComparisonAreas.Forms | ComparisonAreas.Views,
+                true);
+
+            Assert.IsTrue(snapshot.IncludesUnpublishedMetadata);
+            Assert.AreEqual(1, snapshot.Forms.Count);
+            Assert.AreEqual(1, snapshot.Views.Count);
+            CollectionAssert.AreEquivalent(
+                new[] { "systemform", "savedquery" },
+                service.UnpublishedRetrievedEntityNames.ToArray());
+            Assert.AreEqual(0, service.RetrievedEntityNames.Count);
+            Assert.AreEqual(0, service.WriteAttempts);
+        }
+
+        [TestMethod]
         public void FormFallbackUsesFormIdRatherThanFormIdUnique()
         {
             var formId = Guid.Parse("12345678-1234-1234-1234-1234567890ab");
@@ -77,6 +107,64 @@ namespace EnvironmentComparison.Tests
             CollectionAssert.Contains(
                 environmentA.RetrievedQueries.Single().ColumnSet.Columns,
                 "formidunique");
+            CollectionAssert.Contains(
+                environmentA.RetrievedQueries.Single().ColumnSet.Columns,
+                "componentstate");
+        }
+
+        [TestMethod]
+        public void SystemFormRolesUseStableRoleTemplateIdentityAndPreserveRawIds()
+        {
+            var formId = Guid.Parse("12345678-1234-1234-1234-1234567890ab");
+            var roleIdA = Guid.Parse("aaaaaaaa-1111-1111-1111-111111111111");
+            var roleIdB = Guid.Parse("bbbbbbbb-2222-2222-2222-222222222222");
+            var templateId = Guid.Parse("627090ff-40a3-4053-8790-584edc5be201");
+            var environmentA = new RecordingService();
+            var environmentB = new RecordingService();
+            environmentA.RetrieveResults["systemform"] = FormWithRole(formId, roleIdA);
+            environmentB.RetrieveResults["systemform"] = FormWithRole(formId, roleIdB);
+            environmentA.RetrieveResults["role"] = Roles(Role(roleIdA, templateId, "System Administrator"));
+            environmentB.RetrieveResults["role"] = Roles(Role(roleIdB, templateId, "System Administrator"));
+
+            var snapshotA = new DataverseMetadataService().LoadSnapshot(environmentA, ComparisonAreas.Forms, false);
+            var snapshotB = new DataverseMetadataService().LoadSnapshot(environmentB, ComparisonAreas.Forms, false);
+            var result = new MetadataComparisonService().Compare(snapshotA, snapshotB);
+
+            Assert.AreEqual($"template:{templateId:D}", snapshotA.Forms[0].GetProperty("Form security role identities"));
+            Assert.AreEqual(
+                snapshotA.Forms[0].GetProperty("Form security role identities"),
+                snapshotB.Forms[0].GetProperty("Form security role identities"));
+            Assert.AreEqual(snapshotA.Forms[0].GetProperty("Form XML"), snapshotB.Forms[0].GetProperty("Form XML"));
+            StringAssert.Contains(snapshotA.Forms[0].GetProperty("Raw Form XML"), roleIdA.ToString("D"));
+            StringAssert.Contains(snapshotB.Forms[0].GetProperty("Raw Form XML"), roleIdB.ToString("D"));
+            Assert.IsFalse(result.Issues.Any(issue => issue.PropertyName == "Form XML" || issue.PropertyName == "Form security roles"));
+            CollectionAssert.Contains(environmentA.RetrievedEntityNames.ToArray(), "role");
+            Assert.AreEqual(0, environmentA.WriteAttempts);
+            Assert.AreEqual(0, environmentB.WriteAttempts);
+        }
+
+        [TestMethod]
+        public void FormRolesWithoutTemplatesUseParentRootRoleIdentity()
+        {
+            var formId = Guid.Parse("12345678-1234-1234-1234-1234567890ab");
+            var roleIdA = Guid.Parse("aaaaaaaa-1111-1111-1111-111111111111");
+            var roleIdB = Guid.Parse("bbbbbbbb-2222-2222-2222-222222222222");
+            var rootRoleId = Guid.Parse("cccccccc-3333-3333-3333-333333333333");
+            var environmentA = new RecordingService();
+            var environmentB = new RecordingService();
+            environmentA.RetrieveResults["systemform"] = FormWithRole(formId, roleIdA);
+            environmentB.RetrieveResults["systemform"] = FormWithRole(formId, roleIdB);
+            environmentA.RetrieveResults["role"] = Roles(RoleWithoutTemplate(roleIdA, rootRoleId, "Student Services"));
+            environmentB.RetrieveResults["role"] = Roles(RoleWithoutTemplate(roleIdB, rootRoleId, "Student Services"));
+
+            var snapshotA = new DataverseMetadataService().LoadSnapshot(environmentA, ComparisonAreas.Forms, false);
+            var snapshotB = new DataverseMetadataService().LoadSnapshot(environmentB, ComparisonAreas.Forms, false);
+
+            Assert.AreEqual($"root:{rootRoleId:D}", snapshotA.Forms[0].GetProperty("Form security role identities"));
+            Assert.AreEqual(
+                snapshotA.Forms[0].GetProperty("Form security role identities"),
+                snapshotB.Forms[0].GetProperty("Form security role identities"));
+            Assert.AreEqual(0, new MetadataComparisonService().Compare(snapshotA, snapshotB).Issues.Count);
         }
 
         [TestMethod]
@@ -108,14 +196,6 @@ namespace EnvironmentComparison.Tests
                         }
                     }
                 });
-            typeof(EntityMetadata)
-                .GetProperty("IsCustomEntity")!
-                .GetSetMethod(true)!
-                .Invoke(entityMetadata, new object[] { (bool?)true });
-            typeof(AttributeMetadata)
-                .GetProperty("IsCustomAttribute")!
-                .GetSetMethod(true)!
-                .Invoke(entityMetadata.Attributes[0], new object[] { (bool?)true });
             var service = new RecordingService
             {
                 EntityMetadata = new[] { entityMetadata }
@@ -129,13 +209,11 @@ namespace EnvironmentComparison.Tests
             Assert.AreEqual(1, snapshot.Tables.Count);
             Assert.AreEqual("Student", snapshot.Tables[0].DisplayName);
             Assert.AreEqual("Standard", snapshot.Tables[0].Classification);
-            Assert.AreEqual("Yes", snapshot.Tables[0].CustomTable);
             Assert.AreEqual("UserOwned", snapshot.Tables[0].GetProperty("Ownership type"));
             Assert.AreEqual("True", snapshot.Tables[0].GetProperty("Audit enabled"));
             Assert.AreEqual(1, snapshot.Tables[0].Columns.Count);
             Assert.AreEqual("100", snapshot.Tables[0].Columns[0].GetProperty("Maximum length"));
             Assert.AreEqual("ApplicationRequired", snapshot.Tables[0].Columns[0].GetProperty("Requirement level"));
-            Assert.AreEqual("Yes", snapshot.Tables[0].Columns[0].CustomComponent);
             Assert.IsFalse(snapshot.Tables[0].Properties.ContainsKey("Managed"));
             Assert.IsFalse(snapshot.Tables[0].Columns[0].Properties.ContainsKey("Managed"));
         }
@@ -181,6 +259,48 @@ namespace EnvironmentComparison.Tests
         }
 
         [TestMethod]
+        public void FormNormalizationIgnoresGeneratedLabelIdsAndEmptyPlaceholderCellIds()
+        {
+            const string environmentA =
+                "<form><tabs><tab id='{11111111-1111-1111-1111-111111111111}' labelid='{aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa}'>" +
+                "<labels><label description='Summary' languagecode='1033' /></labels>" +
+                "<columns><column><sections><section id='{22222222-2222-2222-2222-222222222222}' labelid='{bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb}'>" +
+                "<labels><label description='Details' languagecode='1033' /></labels><rows><row>" +
+                "<cell id='{33333333-3333-3333-3333-333333333333}' labelid='{cccccccc-cccc-cccc-cccc-cccccccccccc}'>" +
+                "<labels><label description='' languagecode='1033' /></labels></cell>" +
+                "</row></rows></section></sections></column></columns></tab></tabs></form>";
+            const string environmentB =
+                "<form><tabs><tab id='{11111111-1111-1111-1111-111111111111}' labelid='{dddddddd-dddd-dddd-dddd-dddddddddddd}'>" +
+                "<labels><label description='Summary' languagecode='1033' /></labels>" +
+                "<columns><column><sections><section id='{22222222-2222-2222-2222-222222222222}' labelid='{eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee}'>" +
+                "<labels><label description='Details' languagecode='1033' /></labels><rows><row>" +
+                "<cell id='{44444444-4444-4444-4444-444444444444}' labelid='{ffffffff-ffff-ffff-ffff-ffffffffffff}'>" +
+                "<labels><label description='' languagecode='1033' /></labels></cell>" +
+                "</row></rows></section></sections></column></columns></tab></tabs></form>";
+
+            Assert.AreEqual(
+                DataverseMetadataService.NormalizeFormDefinition(environmentA),
+                DataverseMetadataService.NormalizeFormDefinition(environmentB));
+        }
+
+        [TestMethod]
+        public void FormNormalizationRetainsIdsOnMeaningfulCells()
+        {
+            const string environmentA =
+                "<form><cell id='{aaaaaaaa-1111-1111-1111-111111111111}' labelid='{cccccccc-3333-3333-3333-333333333333}'>" +
+                "<labels><label description='Name' languagecode='1033' /></labels>" +
+                "<control id='name' datafieldname='name' /></cell></form>";
+            const string environmentB =
+                "<form><cell id='{bbbbbbbb-2222-2222-2222-222222222222}' labelid='{dddddddd-4444-4444-4444-444444444444}'>" +
+                "<labels><label description='Name' languagecode='1033' /></labels>" +
+                "<control id='name' datafieldname='name' /></cell></form>";
+
+            Assert.AreNotEqual(
+                DataverseMetadataService.NormalizeFormDefinition(environmentA),
+                DataverseMetadataService.NormalizeFormDefinition(environmentB));
+        }
+
+        [TestMethod]
         public void RollupFormulaWhitespaceDoesNotCreateADifference()
         {
             const string formatted =
@@ -223,6 +343,40 @@ namespace EnvironmentComparison.Tests
             return new EntityCollection(new List<Entity> { form });
         }
 
+        private static EntityCollection FormWithRole(Guid formId, Guid roleId)
+        {
+            var form = new Entity("systemform", formId);
+            form["formid"] = formId;
+            form["objecttypecode"] = "account";
+            form["name"] = "Information";
+            form["formxml"] = "<form><DisplayConditions FallbackForm='true' Order='1'><Role Id='{" +
+                roleId.ToString("D") +
+                "}' /></DisplayConditions></form>";
+            return new EntityCollection(new List<Entity> { form });
+        }
+
+        private static Entity Role(Guid roleId, Guid templateId, string name)
+        {
+            var role = new Entity("role", roleId);
+            role["name"] = name;
+            role["roletemplateid"] = new EntityReference("roletemplate", templateId);
+            role["parentrootroleid"] = new EntityReference("role", roleId);
+            return role;
+        }
+
+        private static Entity RoleWithoutTemplate(Guid roleId, Guid rootRoleId, string name)
+        {
+            var role = new Entity("role", roleId);
+            role["name"] = name;
+            role["parentrootroleid"] = new EntityReference("role", rootRoleId);
+            return role;
+        }
+
+        private static EntityCollection Roles(params Entity[] roles)
+        {
+            return new EntityCollection(roles.ToList());
+        }
+
         private sealed class RecordingService : IOrganizationService
         {
             public EntityMetadata[] EntityMetadata { get; set; } = Array.Empty<EntityMetadata>();
@@ -233,7 +387,12 @@ namespace EnvironmentComparison.Tests
 
             public List<QueryExpression> RetrievedQueries { get; } = new List<QueryExpression>();
 
+            public List<string> UnpublishedRetrievedEntityNames { get; } = new List<string>();
+
             public Dictionary<string, EntityCollection> RetrieveResults { get; } =
+                new Dictionary<string, EntityCollection>(StringComparer.OrdinalIgnoreCase);
+
+            public Dictionary<string, EntityCollection> UnpublishedRetrieveResults { get; } =
                 new Dictionary<string, EntityCollection>(StringComparer.OrdinalIgnoreCase);
 
             public int WriteAttempts { get; private set; }
@@ -241,6 +400,19 @@ namespace EnvironmentComparison.Tests
             public OrganizationResponse Execute(OrganizationRequest request)
             {
                 ExecuteRequests.Add(request);
+                if (request is RetrieveUnpublishedMultipleRequest unpublishedRequest)
+                {
+                    var query = (QueryExpression)unpublishedRequest.Query;
+                    UnpublishedRetrievedEntityNames.Add(query.EntityName);
+                    RetrievedQueries.Add(query);
+                    var entities = UnpublishedRetrieveResults.TryGetValue(query.EntityName, out var result)
+                        ? result
+                        : new EntityCollection();
+                    var unpublishedResponse = new RetrieveUnpublishedMultipleResponse();
+                    unpublishedResponse.Results["EntityCollection"] = entities;
+                    return unpublishedResponse;
+                }
+
                 var response = new RetrieveAllEntitiesResponse();
                 response.Results["EntityMetadata"] = EntityMetadata;
                 return response;

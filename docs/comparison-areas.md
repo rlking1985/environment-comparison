@@ -16,8 +16,6 @@ Each result includes a **Table classification** value:
 
 Managed state, solution layer, metadata ID, and introduced version are deliberately excluded.
 
-Every result also includes **Custom table** and **Custom component** context. Custom table comes from `EntityMetadata.IsCustomEntity`. Column rows use `AttributeMetadata.IsCustomAttribute` for Custom component. A table row uses the table value for both columns. Form and view component status is shown as `Unknown` because managed state does not reliably identify whether those components are custom.
-
 ## Columns
 
 Use this for missing columns, renamed display labels, and important column settings. A required or primary column missing in Environment B is Critical; another missing column is High.
@@ -26,7 +24,7 @@ If an A-only and B-only column on the same table have the same display name, typ
 
 ## Forms
 
-This compares system forms associated with tables. Forms are matched by `UniqueName` when it is populated and otherwise by the System Form component ID (`formid`). The environment-specific `formidunique` value is not used. Formatting-only XML differences are ignored. A changed grid fingerprint means the normalized form definition differs; CSV export includes the complete normalized XML from both environments.
+This compares system forms associated with tables. Forms are matched by `UniqueName` when it is populated and otherwise by the System Form component ID (`formid`). The environment-specific `formidunique` value is not used as an identity. Formatting-only XML differences are ignored. Generated `labelid` values and IDs on empty placeholder cells are also ignored, while IDs on cells containing fields, controls, events, data, or meaningful labels remain significant. Form role assignments are compared separately: Microsoft roles use the stable `RoleTemplateId`, roles without templates use `ParentRootRoleId`, and unresolved roles retain their original GUID. Role order and environment-specific IDs for equivalent system roles do not produce Form XML differences. A changed grid fingerprint means the remaining normalized form definition differs; CSV export includes the complete normalized comparison XML from both environments.
 
 ## System views
 
@@ -34,10 +32,10 @@ This compares `savedquery` definitions, including FetchXML, layout XML, and colu
 
 ## Published versus unpublished
 
-Leave **Include unpublished metadata** off when checking what is deployed and available to normal users. Turn it on when reviewing draft customizations that have not yet been published.
+Leave **Include unpublished metadata** off when checking what is deployed and available to normal users. Turn it on when reviewing draft customizations that have not yet been published. When selected, table metadata is retrieved as if published and forms/views use Dataverse's read-only `RetrieveUnpublishedMultiple` request, so the option applies consistently to every selected comparison area.
 
 ## Temporary raw metadata export
 
-After a comparison, **Export raw metadata** writes an unfiltered diagnostic CSV containing every loaded property from Environment A and Environment B, even when the values are identical. Form rows include `formid`, `formidunique`, `UniqueName`, object type, the exact retrieved FormXML, and the normalized Form XML used by the comparison. View rows similarly include identifiers and exact retrieved FetchXML, LayoutXML, and column-set XML alongside normalized values. `formidunique` is diagnostic only and is never used as the form comparison key.
+After a comparison, **Export raw metadata (JSON)** writes unfiltered, hierarchical snapshots for Environment A and Environment B, even when values are identical. JSON preserves the table/component structure, null-equivalent empty values, identifiers, XML, and line breaks without Excel column splitting. Forms include `formid`, `formidunique`, `UniqueName`, object type, component/publication state, solution and ancestor identifiers, original role GUIDs, resolved role identities, the exact retrieved FormXML, and the normalized Form XML used by the comparison. Views similarly include identifiers and exact retrieved FetchXML, LayoutXML, and column-set XML alongside normalized values. `formidunique` and raw role IDs are diagnostic only and are never used directly when a stable semantic identity is available.
 
-The export runs in the background, splits oversized values into Excel-safe numbered columns, and retrieves no table records. It is intentionally temporary debugging functionality.
+The export streams to disk in the background, has no Excel cell-size limit, and retrieves no table records. It is intentionally temporary debugging functionality.

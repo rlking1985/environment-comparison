@@ -8,6 +8,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Linq;
 using EnvironmentComparison.Domain;
+using Microsoft.Crm.Sdk.Messages;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Messages;
 using Microsoft.Xrm.Sdk.Metadata;
@@ -120,25 +121,24 @@ namespace EnvironmentComparison.Services
             if ((areas & ComparisonAreas.Forms) != 0)
             {
                 reportProgress?.Invoke(60, "Loading system forms...");
-                forms.AddRange(LoadForms(service, tableNamesByObjectType));
+                forms.AddRange(LoadForms(service, tableNamesByObjectType, retrieveAsIfPublished));
             }
 
             var views = new List<ViewMetadataInfo>();
             if ((areas & ComparisonAreas.Views) != 0)
             {
                 reportProgress?.Invoke(80, "Loading system views...");
-                views.AddRange(LoadViews(service, tableNamesByObjectType));
+                views.AddRange(LoadViews(service, tableNamesByObjectType, retrieveAsIfPublished));
             }
 
             reportProgress?.Invoke(100, "Metadata snapshot loaded.");
-            return new EnvironmentMetadataSnapshot(tables, forms, views, areas);
+            return new EnvironmentMetadataSnapshot(tables, forms, views, areas, retrieveAsIfPublished);
         }
 
         private static TableMetadataInfo ToTable(EntityMetadata metadata, bool includeColumns)
         {
             var properties = ReadProperties(metadata, TableProperties);
             properties["Table classification"] = ClassifyTable(metadata);
-            properties["Custom table"] = CustomStatus(metadata.IsCustomEntity);
             var columns = includeColumns
                 ? (metadata.Attributes ?? Array.Empty<AttributeMetadata>())
                     .Where(attribute => !string.IsNullOrWhiteSpace(attribute.LogicalName))
@@ -150,7 +150,6 @@ namespace EnvironmentComparison.Services
         private static ColumnMetadataInfo ToColumn(AttributeMetadata metadata)
         {
             var properties = ReadProperties(metadata, ColumnProperties);
-            properties["Custom component"] = CustomStatus(metadata.IsCustomAttribute);
             properties["Formula definition"] = NormalizeDefinition(properties["Formula definition"]);
             var optionSet = ReadRawProperty(metadata, "OptionSet");
             if (optionSet != null)
@@ -163,16 +162,10 @@ namespace EnvironmentComparison.Services
             return new ColumnMetadataInfo(metadata.LogicalName, properties);
         }
 
-        private static string CustomStatus(bool? isCustom)
-        {
-            return isCustom.HasValue
-                ? isCustom.Value ? "Yes" : "No"
-                : "Unknown";
-        }
-
         private static IEnumerable<FormMetadataInfo> LoadForms(
             IOrganizationService service,
-            IReadOnlyDictionary<int, string> tableNamesByObjectType)
+            IReadOnlyDictionary<int, string> tableNamesByObjectType,
+            bool includeUnpublished)
         {
             var query = new QueryExpression("systemform")
             {
@@ -187,10 +180,23 @@ namespace EnvironmentComparison.Services
                     "objecttypecode",
                     "formactivationstate",
                     "formpresentation",
-                    "uniquename")
+                    "uniquename",
+                    "componentstate",
+                    "solutionid",
+                    "ismanaged",
+                    "publishedon",
+                    "introducedversion",
+                    "ancestorformid")
             };
 
-            foreach (var entity in RetrieveAll(service, query))
+            var entities = RetrieveAll(service, query, includeUnpublished);
+            var roleIds = entities
+                .SelectMany(entity => FormRoleIds(EntityRawValue(entity, "formxml")))
+                .Distinct()
+                .ToList();
+            var roles = LoadFormRoles(service, roleIds);
+
+            foreach (var entity in entities)
             {
                 var table = ResolveTableName(entity, "objecttypecode", tableNamesByObjectType);
                 if (string.IsNullOrWhiteSpace(table))
@@ -201,6 +207,8 @@ namespace EnvironmentComparison.Services
                 var name = EntityValue(entity, "name");
                 var uniqueName = EntityValue(entity, "uniquename");
                 var formId = EntityGuid(entity, "formid") ?? entity.Id;
+                var rawFormXml = EntityRawValue(entity, "formxml");
+                var assignedRoleIds = FormRoleIds(rawFormXml).Distinct().ToList();
                 var key = !string.IsNullOrWhiteSpace(uniqueName)
                     ? $"{table}|unique:{uniqueName.Trim().ToLowerInvariant()}"
                     : $"{table}|id:{formId:D}";
@@ -215,16 +223,102 @@ namespace EnvironmentComparison.Services
                     ["Form type"] = EntityValue(entity, "type"),
                     ["Activation state"] = EntityValue(entity, "formactivationstate"),
                     ["Presentation"] = EntityValue(entity, "formpresentation"),
-                    ["Form XML"] = NormalizeDefinition(EntityRawValue(entity, "formxml")),
-                    ["Raw Form XML"] = EntityRawValue(entity, "formxml")
+                    ["Component state"] = EntityValue(entity, "componentstate"),
+                    ["Solution ID"] = EntityValue(entity, "solutionid"),
+                    ["Managed"] = EntityValue(entity, "ismanaged"),
+                    ["Published on"] = EntityValue(entity, "publishedon"),
+                    ["Introduced version"] = EntityValue(entity, "introducedversion"),
+                    ["Ancestor form ID"] = EntityValue(entity, "ancestorformid"),
+                    ["Form security roles"] = FormatFormSecurityRoles(assignedRoleIds, roles),
+                    ["Form security role identities"] = FormatFormSecurityRoleIdentities(assignedRoleIds, roles),
+                    ["Raw form security role IDs"] = string.Join(" | ", assignedRoleIds.OrderBy(id => id).Select(id => id.ToString("D"))),
+                    ["Form XML"] = NormalizeFormDefinition(rawFormXml),
+                    ["Raw Form XML"] = rawFormXml
                 };
                 yield return new FormMetadataInfo(key, table, name, properties);
             }
         }
 
+        private static IReadOnlyDictionary<Guid, FormRoleInfo> LoadFormRoles(
+            IOrganizationService service,
+            IReadOnlyList<Guid> roleIds)
+        {
+            var result = new Dictionary<Guid, FormRoleInfo>();
+            const int batchSize = 500;
+            for (var offset = 0; offset < roleIds.Count; offset += batchSize)
+            {
+                var batch = roleIds.Skip(offset).Take(batchSize).Cast<object>().ToArray();
+                var query = new QueryExpression("role")
+                {
+                    ColumnSet = new ColumnSet("roleid", "name", "roletemplateid", "parentrootroleid")
+                };
+                query.Criteria.AddCondition("roleid", ConditionOperator.In, batch);
+                foreach (var role in RetrieveAll(service, query))
+                {
+                    var templateId = EntityReferenceId(role, "roletemplateid");
+                    var rootRoleId = EntityReferenceId(role, "parentrootroleid");
+                    var identity = templateId.HasValue
+                        ? $"template:{templateId.Value:D}"
+                        : rootRoleId.HasValue
+                            ? $"root:{rootRoleId.Value:D}"
+                            : $"role:{role.Id:D}";
+                    result[role.Id] = new FormRoleInfo(identity, EntityValue(role, "name"));
+                }
+            }
+
+            return result;
+        }
+
+        private static IReadOnlyList<Guid> FormRoleIds(string formXml)
+        {
+            if (string.IsNullOrWhiteSpace(formXml)) return Array.Empty<Guid>();
+            try
+            {
+                var document = XDocument.Parse(formXml, LoadOptions.None);
+                return document
+                    .Descendants()
+                    .Where(element => element.Name.LocalName.Equals("DisplayConditions", StringComparison.OrdinalIgnoreCase))
+                    .SelectMany(element => element.Elements())
+                    .Where(element => element.Name.LocalName.Equals("Role", StringComparison.OrdinalIgnoreCase))
+                    .Select(element => element.Attributes().FirstOrDefault(attribute => attribute.Name.LocalName.Equals("Id", StringComparison.OrdinalIgnoreCase))?.Value)
+                    .Where(value => Guid.TryParse(value, out _))
+                    .Select(value => Guid.Parse(value!))
+                    .ToList();
+            }
+            catch
+            {
+                return Array.Empty<Guid>();
+            }
+        }
+
+        private static string FormatFormSecurityRoleIdentities(
+            IEnumerable<Guid> roleIds,
+            IReadOnlyDictionary<Guid, FormRoleInfo> roles)
+        {
+            return string.Join(" | ", roleIds
+                .Select(roleId => roles.TryGetValue(roleId, out var role) ? role.Identity : $"role:{roleId:D}")
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(identity => identity, StringComparer.OrdinalIgnoreCase));
+        }
+
+        private static string FormatFormSecurityRoles(
+            IEnumerable<Guid> roleIds,
+            IReadOnlyDictionary<Guid, FormRoleInfo> roles)
+        {
+            return string.Join(" | ", roleIds
+                .Select(roleId => roles.TryGetValue(roleId, out var role)
+                    ? new { role.Identity, Name = string.IsNullOrWhiteSpace(role.Name) ? "Unnamed role" : role.Name }
+                    : new { Identity = $"role:{roleId:D}", Name = "Unresolved role" })
+                .GroupBy(role => role.Identity, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .OrderBy(role => role.Identity, StringComparer.OrdinalIgnoreCase)
+                .Select(role => $"{role.Name} [{role.Identity}]"));
+        }
+
         private static IEnumerable<ViewMetadataInfo> LoadViews(
             IOrganizationService service,
-            IReadOnlyDictionary<int, string> tableNamesByObjectType)
+            IReadOnlyDictionary<int, string> tableNamesByObjectType,
+            bool includeUnpublished)
         {
             var query = new QueryExpression("savedquery")
             {
@@ -241,7 +335,7 @@ namespace EnvironmentComparison.Services
                     "advancedgroupby")
             };
 
-            foreach (var entity in RetrieveAll(service, query))
+            foreach (var entity in RetrieveAll(service, query, includeUnpublished))
             {
                 var table = ResolveTableName(entity, "returnedtypecode", tableNamesByObjectType);
                 if (string.IsNullOrWhiteSpace(table))
@@ -273,11 +367,22 @@ namespace EnvironmentComparison.Services
 
         private static List<Entity> RetrieveAll(IOrganizationService service, QueryExpression query)
         {
+            return RetrieveAll(service, query, false);
+        }
+
+        private static List<Entity> RetrieveAll(
+            IOrganizationService service,
+            QueryExpression query,
+            bool includeUnpublished)
+        {
             var result = new List<Entity>();
             query.PageInfo = new PagingInfo { Count = 5000, PageNumber = 1 };
             while (true)
             {
-                var page = service.RetrieveMultiple(query);
+                var page = includeUnpublished
+                    ? ((RetrieveUnpublishedMultipleResponse)service.Execute(
+                        new RetrieveUnpublishedMultipleRequest { Query = query })).EntityCollection
+                    : service.RetrieveMultiple(query);
                 result.AddRange(page.Entities);
                 if (!page.MoreRecords)
                 {
@@ -417,6 +522,79 @@ namespace EnvironmentComparison.Services
                 : (Guid?)null;
         }
 
+        private static Guid? EntityReferenceId(Entity entity, string attributeName)
+        {
+            if (!entity.Attributes.TryGetValue(attributeName, out var value) || value == null)
+            {
+                return null;
+            }
+
+            if (value is EntityReference reference) return reference.Id;
+            return value is Guid guid ? guid : (Guid?)null;
+        }
+
+        internal static string NormalizeFormDefinition(string xml)
+        {
+            var normalized = NormalizeDefinition(xml);
+            if (normalized.Length == 0) return string.Empty;
+            try
+            {
+                var document = XDocument.Parse(normalized, LoadOptions.None);
+                foreach (var element in document.Root?.DescendantsAndSelf() ?? Enumerable.Empty<XElement>())
+                {
+                    element.Attributes()
+                        .Where(attribute => attribute.Name.LocalName.Equals("labelid", StringComparison.OrdinalIgnoreCase))
+                        .Remove();
+                }
+
+                foreach (var cell in document
+                    .Descendants()
+                    .Where(element => element.Name.LocalName.Equals("cell", StringComparison.OrdinalIgnoreCase))
+                    .Where(IsEmptyPlaceholderCell))
+                {
+                    cell.Attributes()
+                        .Where(attribute => attribute.Name.LocalName.Equals("id", StringComparison.OrdinalIgnoreCase))
+                        .Remove();
+                }
+
+                document
+                    .Descendants()
+                    .Where(element => element.Name.LocalName.Equals("DisplayConditions", StringComparison.OrdinalIgnoreCase))
+                    .SelectMany(element => element.Elements())
+                    .Where(element => element.Name.LocalName.Equals("Role", StringComparison.OrdinalIgnoreCase))
+                    .Remove();
+                return document.Root?.ToString(SaveOptions.DisableFormatting) ?? normalized;
+            }
+            catch
+            {
+                return normalized;
+            }
+        }
+
+        private static bool IsEmptyPlaceholderCell(XElement cell)
+        {
+            if (cell.Descendants().Any(IsFunctionalFormElement))
+            {
+                return false;
+            }
+
+            return !cell
+                .Descendants()
+                .Where(element => element.Name.LocalName.Equals("label", StringComparison.OrdinalIgnoreCase))
+                .SelectMany(element => element.Attributes())
+                .Where(attribute => attribute.Name.LocalName.Equals("description", StringComparison.OrdinalIgnoreCase))
+                .Any(attribute => !string.IsNullOrWhiteSpace(attribute.Value));
+        }
+
+        private static bool IsFunctionalFormElement(XElement element)
+        {
+            var name = element.Name.LocalName;
+            return name.Equals("control", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("data", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("event", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("Handler", StringComparison.OrdinalIgnoreCase);
+        }
+
         internal static string NormalizeDefinition(string xml)
         {
             if (string.IsNullOrWhiteSpace(xml)) return string.Empty;
@@ -470,6 +648,19 @@ namespace EnvironmentComparison.Services
             }
 
             return normalized;
+        }
+
+        private sealed class FormRoleInfo
+        {
+            public FormRoleInfo(string identity, string name)
+            {
+                Identity = identity;
+                Name = name;
+            }
+
+            public string Identity { get; }
+
+            public string Name { get; }
         }
 
         private static string ClassifyTable(EntityMetadata metadata)

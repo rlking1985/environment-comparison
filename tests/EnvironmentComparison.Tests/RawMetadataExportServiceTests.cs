@@ -17,13 +17,12 @@ namespace EnvironmentComparison.Tests
                 "new_student",
                 Properties(
                     "Display name", "Student",
-                    "Table classification", "Standard",
-                    "Custom table", "Yes"),
+                    "Table classification", "Standard"),
                 new[]
                 {
                     new ColumnMetadataInfo(
                         "new_name",
-                        Properties("Display name", "Name", "Custom component", "Yes"))
+                        Properties("Display name", "Name"))
                 });
             var form = new FormMetadataInfo(
                 "new_student|id:12345678-1234-1234-1234-1234567890ab",
@@ -40,23 +39,45 @@ namespace EnvironmentComparison.Tests
                 includedAreas: ComparisonAreas.TableMetadata | ComparisonAreas.Columns | ComparisonAreas.Forms);
             var result = new MetadataComparisonService().Compare(snapshot, snapshot);
 
-            string csv;
-            int rowCount;
+            string json;
+            int propertyCount;
             using (var writer = new StringWriter())
             {
-                rowCount = new RawMetadataExportService().Write(writer, result);
-                csv = writer.ToString();
+                propertyCount = new RawMetadataExportService().Write(writer, result);
+                json = writer.ToString();
             }
 
             Assert.AreEqual(0, result.Issues.Count);
-            Assert.IsTrue(rowCount > 0);
-            StringAssert.Contains(csv, "\"Environment\",\"Scope\"");
-            StringAssert.Contains(csv, "\"Environment A\"");
-            StringAssert.Contains(csv, "\"Environment B\"");
-            StringAssert.Contains(csv, "\"Custom table\",\"Custom component\"");
-            StringAssert.Contains(csv, "\"Form ID unique\"");
-            StringAssert.Contains(csv, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
-            StringAssert.Contains(csv, "<form>\r\n  <tab id=\"\"main\"\" />");
+            Assert.AreEqual(14, propertyCount);
+            StringAssert.StartsWith(json, "{");
+            StringAssert.Contains(json, "\"exportType\": \"Dataverse environment raw metadata\"");
+            StringAssert.Contains(json, "\"environment\": \"Environment A\"");
+            StringAssert.Contains(json, "\"environment\": \"Environment B\"");
+            StringAssert.Contains(json, "\"tables\": [");
+            StringAssert.Contains(json, "\"forms\": [");
+            StringAssert.Contains(json, "\"Form ID unique\": \"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\"");
+            StringAssert.Contains(json, "<form>\\r\\n  <tab id=\\\"main\\\" />");
+            Assert.IsFalse(json.Contains("Value (part"));
+        }
+
+        [TestMethod]
+        public void RecordsWhetherTheSnapshotIncludesUnpublishedMetadata()
+        {
+            var snapshot = new EnvironmentMetadataSnapshot(
+                Array.Empty<TableMetadataInfo>(),
+                includedAreas: ComparisonAreas.Forms,
+                includesUnpublishedMetadata: true);
+            var result = new MetadataComparisonService().Compare(snapshot, snapshot);
+
+            string json;
+            using (var writer = new StringWriter())
+            {
+                new RawMetadataExportService().Write(writer, result);
+                json = writer.ToString();
+            }
+
+            StringAssert.Contains(json, "\"metadataMode\": \"PublishedAndUnpublished\"");
+            StringAssert.Contains(json, "\"includedAreas\": [\"Forms\"]");
         }
 
         private static Dictionary<string, string> Properties(params string[] values)

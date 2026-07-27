@@ -311,11 +311,11 @@ namespace EnvironmentComparison.Ui
             StyleSecondaryButton(_exportButton);
             _exportButton.Enabled = false;
             _exportButton.Click += (_, __) => ExportCsv();
-            _rawExportButton.Text = "Export raw metadata";
+            _rawExportButton.Text = "Export raw metadata (JSON)";
             StyleSecondaryButton(_rawExportButton);
             _rawExportButton.Enabled = false;
             _rawExportButton.Click += (_, __) => ExportRawMetadata();
-            _toolTip.SetToolTip(_rawExportButton, "Temporary diagnostic export of every loaded metadata property from both environments, not only differences.");
+            _toolTip.SetToolTip(_rawExportButton, "Temporary structured JSON export of every loaded metadata property from both environments, not only differences.");
             _unpublishedCheckBox.AutoSize = true;
             _unpublishedCheckBox.Text = "Include unpublished metadata";
             _unpublishedCheckBox.Margin = new Padding(14, 8, 8, 4);
@@ -410,8 +410,6 @@ namespace EnvironmentComparison.Ui
             AddGridColumn("Difference", "Difference", 145);
             AddGridColumn("Table", "Table", 165);
             AddGridColumn("Classification", "Table classification", 105);
-            AddGridColumn("CustomTable", "Custom table", 85);
-            AddGridColumn("CustomComponent", "Custom component", 105);
             AddGridColumn("Component", "Column / form / view", 205);
             AddGridColumn("Property", "Property", 165);
             AddGridColumn("A", "Environment A", 190);
@@ -550,8 +548,6 @@ namespace EnvironmentComparison.Ui
                         DisplayDifference(issue.Kind),
                         DisplayTable(issue),
                         issue.TableClassification,
-                        issue.CustomTable,
-                        issue.CustomComponent,
                         DisplayComponent(issue),
                         issue.PropertyName,
                         issue.EnvironmentAPreviewValue,
@@ -603,8 +599,6 @@ namespace EnvironmentComparison.Ui
                     issue.TableLogicalName,
                     issue.TableDisplayName,
                     issue.TableClassification,
-                    issue.CustomTable,
-                    issue.CustomComponent,
                     issue.ComponentKey,
                     issue.ComponentName,
                     issue.PropertyName,
@@ -633,8 +627,6 @@ namespace EnvironmentComparison.Ui
                 AddDetail("Difference", DisplayDifference(issue.Kind));
                 AddDetail("Table", DisplayTable(issue));
                 AddDetail("Table classification", issue.TableClassification);
-                AddDetail("Custom table", issue.CustomTable);
-                AddDetail("Custom component", issue.CustomComponent);
                 AddDetail("Component key", issue.ComponentKey);
                 AddDetail("Component name", issue.ComponentName);
                 AddDetail("Property", issue.PropertyName);
@@ -690,9 +682,9 @@ namespace EnvironmentComparison.Ui
             using (var dialog = new SaveFileDialog
             {
                 AddExtension = true,
-                DefaultExt = "csv",
-                Filter = "CSV files (*.csv)|*.csv|All files (*.*)|*.*",
-                FileName = $"Dataverse-environment-raw-metadata-{DateTime.Now:yyyyMMdd-HHmmss}.csv",
+                DefaultExt = "json",
+                Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+                FileName = $"Dataverse-environment-raw-metadata-{DateTime.Now:yyyyMMdd-HHmmss}.json",
                 OverwritePrompt = true,
                 Title = "Export raw metadata for diagnostics"
             })
@@ -727,9 +719,9 @@ namespace EnvironmentComparison.Ui
                 return;
             }
 
-            var rowCount = (int)eventArgs.Result;
-            _activity.Items.Insert(0, $"{DateTime.Now:T} Exported {rowCount:N0} raw metadata rows to {fileName}.");
-            MessageBox.Show(this, $"Exported {rowCount:N0} raw metadata rows.", "Raw metadata exported", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            var propertyCount = (int)eventArgs.Result;
+            _activity.Items.Insert(0, $"{DateTime.Now:T} Exported {propertyCount:N0} raw metadata properties to {fileName}.");
+            MessageBox.Show(this, $"Exported {propertyCount:N0} raw metadata properties as structured JSON.", "Raw metadata exported", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private ComparisonAreas SelectedAreas

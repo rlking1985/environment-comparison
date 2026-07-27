@@ -19,18 +19,19 @@ The area flags and component models are intentionally separate so later versions
 
 - All Dataverse operations are reads.
 - Table and column metadata uses `RetrieveAllEntitiesRequest`.
-- Forms use read-only queries against `systemform`.
-- System views use read-only queries against `savedquery`.
+- Forms use read-only queries against `systemform`; draft definitions use the read-only `RetrieveUnpublishedMultiple` request only when explicitly selected.
+- System views use read-only queries against `savedquery`, with the same explicit unpublished retrieval behavior.
 - The plugin has no create, update, delete, associate, disassociate, import, export, publish, or solution-operation code.
 - Managed/unmanaged status, solution layers, component version stamps, and metadata IDs are not compared.
 - Published definitions are compared by default. Including unpublished metadata is explicit.
 - Formula, form, and view XML is normalized before comparison so indentation, line-ending, and attribute-order differences do not create noise.
+- Form comparison ignores generated label resource IDs and IDs on empty placeholder cells; IDs on cells containing fields, controls, events, data, or meaningful labels remain significant.
 - View Layout XML comparison ignores only the root `grid/@object` code because Dataverse can assign different table object type codes in each environment.
 - The result grid uses compact SHA-256 fingerprints for changed XML definitions; CSV export contains the complete normalized XML from both environments.
-- The result grid and differences CSV include `Custom table` and `Custom component` context without treating managed state as custom status.
-- A temporary background `Export raw metadata` action exports every loaded snapshot property, including exact source form/view XML and identity fields, for diagnostics.
+- A temporary background **Export raw metadata (JSON)** action exports both complete snapshots as structured JSON, including exact source form/view XML, identity fields, metadata mode, and diagnostic form publication fields.
+- Form security roles are compared by stable role template/root identity while the raw export retains original role GUIDs.
 - CSV values are quoted and spreadsheet formulas are neutralized.
-- Values longer than Excel's cell limit are split across numbered Environment A/B columns. Normal-sized exports keep the standard 12-column layout.
+- Difference values longer than Excel's cell limit are split across numbered Environment A/B columns. The raw JSON export has no Excel cell-size limit.
 
 ## Use
 
@@ -42,6 +43,7 @@ The area flags and component models are intentionally separate so later versions
 6. Filter by area, severity, direction, or free text.
 7. Select a row to inspect its preview values and explanation. XML definitions use compact fingerprints in the preview.
 8. Export the currently filtered rows to CSV if required.
+9. Use **Export raw metadata (JSON)** when a complete, unfiltered diagnostic snapshot is required.
 
 Environment A is treated as the source/reference side and Environment B as the target/comparison side when severity is calculated. Missing items in Environment B are therefore ranked more highly.
 
@@ -69,7 +71,7 @@ dotnet build src\EnvironmentComparison\EnvironmentComparison.csproj -c Release
 
 The release build creates:
 
-- `artifacts/EnvironmentComparison.XrmToolBox.1.0.0.7.nupkg`
+- `artifacts/EnvironmentComparison.XrmToolBox.1.0.0.8.nupkg`
 - `src/EnvironmentComparison/bin/Release/net48/EnvironmentComparison.dll`
 
 All tests use synthetic objects or a recording `IOrganizationService`. They do not authenticate to or contact Dataverse.

@@ -97,11 +97,41 @@ namespace EnvironmentComparison.Tests
             StringAssert.StartsWith(formIssue.EnvironmentAValue, "<form");
             StringAssert.StartsWith(formIssue.EnvironmentAPreviewValue, "SHA-256 ");
             Assert.AreEqual("Standard", formIssue.TableClassification);
-            Assert.AreEqual("Yes", formIssue.CustomTable);
-            Assert.AreEqual("Unknown", formIssue.CustomComponent);
             StringAssert.StartsWith(viewIssue.EnvironmentAValue, "<fetch");
             StringAssert.StartsWith(viewIssue.EnvironmentAPreviewValue, "SHA-256 ");
             Assert.IsFalse(result.Issues.Any(issue => issue.Scope == ComparisonScope.Table || issue.Scope == ComparisonScope.Column));
+        }
+
+        [TestMethod]
+        public void ReportsDifferentCustomFormSecurityRolesSeparatelyFromFormXml()
+        {
+            var table = Table("new_student");
+            var formA = new FormMetadataInfo(
+                "new_student|unique:main",
+                table.LogicalName,
+                "Main form",
+                Properties(
+                    "Form XML", "<form><DisplayConditions FallbackForm=\"true\" Order=\"1\" /></form>",
+                    "Form security role identities", "root:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    "Form security roles", "Student Administrator [root:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa]"));
+            var formB = new FormMetadataInfo(
+                "new_student|unique:main",
+                table.LogicalName,
+                "Main form",
+                Properties(
+                    "Form XML", "<form><DisplayConditions FallbackForm=\"true\" Order=\"1\" /></form>",
+                    "Form security role identities", "root:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+                    "Form security roles", "Student Administrator [root:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb]"));
+
+            var result = _service.Compare(
+                new EnvironmentMetadataSnapshot(new[] { table }, new[] { formA }, includedAreas: ComparisonAreas.Forms),
+                new EnvironmentMetadataSnapshot(new[] { table }, new[] { formB }, includedAreas: ComparisonAreas.Forms));
+            var issue = result.Issues.Single(item => item.PropertyName == "Form security roles");
+
+            Assert.AreEqual(DifferenceSeverity.Critical, issue.Severity);
+            Assert.AreEqual("Student Administrator [root:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa]", issue.EnvironmentAValue);
+            Assert.AreEqual("Student Administrator [root:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb]", issue.EnvironmentBValue);
+            Assert.IsFalse(result.Issues.Any(item => item.PropertyName == "Form XML"));
         }
 
         [TestMethod]
@@ -217,13 +247,13 @@ namespace EnvironmentComparison.Tests
         {
             return new TableMetadataInfo(
                 logicalName,
-                Properties("Display name", logicalName, "Schema name", logicalName, "Table classification", "Standard", "Custom table", "Yes"),
+                Properties("Display name", logicalName, "Schema name", logicalName, "Table classification", "Standard"),
                 columns);
         }
 
         private static ColumnMetadataInfo Column(string logicalName, string displayName, string type, params string[] additionalProperties)
         {
-            var properties = Properties("Display name", displayName, "Attribute type", type, "Requirement level", "None", "Custom component", "Yes");
+            var properties = Properties("Display name", displayName, "Attribute type", type, "Requirement level", "None");
             for (var index = 0; index < additionalProperties.Length; index += 2)
             {
                 properties[additionalProperties[index]] = additionalProperties[index + 1];

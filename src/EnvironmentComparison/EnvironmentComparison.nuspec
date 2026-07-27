@@ -14,7 +14,7 @@
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>Read-only comparison of Dataverse table, column, form, and system-view metadata between two environments. Highlights missing components and important definition differences while excluding managed-versus-unmanaged noise.</description>
     <summary>Compare important Dataverse metadata safely between environments.</summary>
-    <releaseNotes>Adds Custom table and Custom component context to the result grid and differences CSV. Adds a temporary background raw metadata export for diagnostics, including every loaded property from both environments and exact source form/view XML plus identity fields. No table records or Dataverse write operations are used.</releaseNotes>
+    <releaseNotes>Form security roles are compared semantically: standard roles use stable RoleTemplateId values, other roles use ParentRootRoleId when available, and unresolved roles retain their original IDs. Raw role IDs remain available in the diagnostic export. Removes the Custom table and Custom component columns from the grid and CSV exports.</releaseNotes>
     <copyright>Copyright © 2026 Ross King</copyright>
     <tags>XrmToolBox Plugins Dataverse Dynamics365 Metadata Tables Columns Comparison</tags>
     <dependencies>

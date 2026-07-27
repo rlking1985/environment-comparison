@@ -22,7 +22,8 @@ namespace EnvironmentComparison.Domain
             IEnumerable<TableMetadataInfo> tables,
             IEnumerable<FormMetadataInfo>? forms = null,
             IEnumerable<ViewMetadataInfo>? views = null,
-            ComparisonAreas includedAreas = ComparisonAreas.TableMetadata | ComparisonAreas.Columns)
+            ComparisonAreas includedAreas = ComparisonAreas.TableMetadata | ComparisonAreas.Columns,
+            bool includesUnpublishedMetadata = false)
         {
             if (tables == null) throw new ArgumentNullException(nameof(tables));
             Tables = new ReadOnlyCollection<TableMetadataInfo>(tables.OrderBy(table => table.LogicalName, StringComparer.OrdinalIgnoreCase).ToList());
@@ -31,6 +32,7 @@ namespace EnvironmentComparison.Domain
             Views = new ReadOnlyCollection<ViewMetadataInfo>(
                 (views ?? Enumerable.Empty<ViewMetadataInfo>()).OrderBy(view => view.Key, StringComparer.OrdinalIgnoreCase).ToList());
             IncludedAreas = includedAreas;
+            IncludesUnpublishedMetadata = includesUnpublishedMetadata;
         }
 
         public IReadOnlyList<TableMetadataInfo> Tables { get; }
@@ -40,6 +42,8 @@ namespace EnvironmentComparison.Domain
         public IReadOnlyList<ViewMetadataInfo> Views { get; }
 
         public ComparisonAreas IncludedAreas { get; }
+
+        public bool IncludesUnpublishedMetadata { get; }
 
         public int ColumnCount => Tables.Sum(table => table.Columns.Count);
     }
@@ -114,8 +118,6 @@ namespace EnvironmentComparison.Domain
 
         public string Classification => GetProperty("Table classification");
 
-        public string CustomTable => GetProperty("Custom table");
-
         public string GetProperty(string name) => Properties.TryGetValue(name, out var value) ? value : string.Empty;
     }
 
@@ -133,8 +135,6 @@ namespace EnvironmentComparison.Domain
         public IReadOnlyDictionary<string, string> Properties { get; }
 
         public string DisplayName => GetProperty("Display name");
-
-        public string CustomComponent => GetProperty("Custom component");
 
         public string GetProperty(string name) => Properties.TryGetValue(name, out var value) ? value : string.Empty;
     }
@@ -178,9 +178,7 @@ namespace EnvironmentComparison.Domain
             string details,
             string tableClassification = "",
             string? environmentAPreviewValue = null,
-            string? environmentBPreviewValue = null,
-            string customTable = "",
-            string customComponent = "")
+            string? environmentBPreviewValue = null)
         {
             Severity = severity;
             Scope = scope;
@@ -195,8 +193,6 @@ namespace EnvironmentComparison.Domain
             EnvironmentBValue = environmentBValue ?? string.Empty;
             EnvironmentAPreviewValue = environmentAPreviewValue ?? EnvironmentAValue;
             EnvironmentBPreviewValue = environmentBPreviewValue ?? EnvironmentBValue;
-            CustomTable = customTable ?? string.Empty;
-            CustomComponent = customComponent ?? string.Empty;
             Details = details ?? string.Empty;
         }
 
@@ -211,10 +207,6 @@ namespace EnvironmentComparison.Domain
         public string TableDisplayName { get; }
 
         public string TableClassification { get; }
-
-        public string CustomTable { get; }
-
-        public string CustomComponent { get; }
 
         public string ComponentKey { get; }
 
