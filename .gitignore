@@ -6,4 +6,4 @@ artifacts/
 *.suo
 TestResults/
 packages/
-
+.temp/

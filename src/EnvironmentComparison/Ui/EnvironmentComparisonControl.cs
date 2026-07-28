@@ -63,6 +63,7 @@ namespace EnvironmentComparison.Ui
         private readonly TextBox _tableLogicalNameRegexBox = new TextBox();
         private readonly Label _tableLogicalNameRegexErrorLabel = new Label();
         private readonly ComboBox _scopeFilter = new ComboBox();
+        private readonly ComboBox _classificationFilter = new ComboBox();
         private readonly ComboBox _severityFilter = new ComboBox();
         private readonly ComboBox _differenceFilter = new ComboBox();
         private readonly DataGridView _grid = new DataGridView();
@@ -77,11 +78,14 @@ namespace EnvironmentComparison.Ui
         private bool _resumeComparisonAfterConnectionSelection;
         private bool _busy;
         private bool _compactLayout;
+        private bool _updatingClassificationFilter;
         private Regex? _tableLogicalNameRegex;
 
         private const int CompactThreshold = 760;
         private const int MinimumContentWidth = 350;
         private const int RegexMatchTimeoutMilliseconds = 100;
+        private const string AllClassificationsFilterText = "All classifications";
+        private const string NoClassificationFilterText = "No classification";
         private const ComparisonAreas TableAssociatedAreas = ComparisonAreas.TableMetadata
             | ComparisonAreas.Columns
             | ComparisonAreas.Forms
@@ -372,18 +376,25 @@ namespace EnvironmentComparison.Ui
                 Margin = new Padding(0)
             };
             _searchBox.Width = 245;
-            _searchBox.Margin = new Padding(0, 3, 8, 3);
+            _searchBox.Margin = new Padding(0);
             _searchBox.AccessibleName = "Search comparison issues";
             _searchBox.TextChanged += (_, __) => PopulateGrid();
             _toolTip.SetToolTip(_searchBox, "Search table, component, property, values, and details.");
+            var searchFilter = CreateFilterField("Search", _searchBox);
             var tableRegexFilter = CreateTableLogicalNameRegexFilter();
             ConfigureFilter(_scopeFilter, new[] { "All areas", "Tables", "Columns", "Forms", "Views", "Reports" });
+            ConfigureFilter(_classificationFilter, new[] { AllClassificationsFilterText });
             ConfigureFilter(_severityFilter, new[] { "All severities", "Critical and high", "Critical only" });
             ConfigureFilter(_differenceFilter, new[] { "All differences", "Missing in Environment B", "Missing in Environment A", "Changed" });
+            var scopeFilter = CreateFilterField("Area", _scopeFilter);
+            var classificationFilter = CreateFilterField("Classification", _classificationFilter);
+            var severityFilter = CreateFilterField("Severity", _severityFilter);
+            var differenceFilter = CreateFilterField("Difference", _differenceFilter);
             _clearFiltersButton.Text = "Clear filters";
             StyleSecondaryButton(_clearFiltersButton);
             _clearFiltersButton.Click += (_, __) => ClearFilters();
-            filters.Controls.AddRange(new Control[] { _searchBox, tableRegexFilter, _scopeFilter, _severityFilter, _differenceFilter, _clearFiltersButton });
+            var clearFilters = CreateFilterField("Actions", _clearFiltersButton);
+            filters.Controls.AddRange(new[] { searchFilter, tableRegexFilter, classificationFilter, scopeFilter, severityFilter, differenceFilter, clearFilters });
             layout.Controls.Add(filters, 0, 1);
             UpdateTableLogicalNameRegexAvailability();
 
@@ -542,6 +553,7 @@ namespace EnvironmentComparison.Ui
 
             var loaded = (ComparisonLoadResult)eventArgs.Result;
             _result = loaded.Result;
+            PopulateClassificationFilter();
             PopulateGrid();
             var mode = loaded.IncludedUnpublished ? "published and unpublished" : "published";
             _summaryLabel.Text = $"Compared {DisplayAreas(_result.EnvironmentA.IncludedAreas)} using {mode} definitions. No changes were made.";
@@ -610,6 +622,18 @@ namespace EnvironmentComparison.Ui
         private bool MatchesFilters(ComparisonIssue issue)
         {
             if (_scopeFilter.SelectedIndex > 0 && (int)issue.Scope != _scopeFilter.SelectedIndex - 1) return false;
+            if (_classificationFilter.SelectedIndex > 0)
+            {
+                var selectedClassification = _classificationFilter.SelectedItem?.ToString() ?? string.Empty;
+                if (string.Equals(selectedClassification, NoClassificationFilterText, StringComparison.Ordinal))
+                {
+                    if (!string.IsNullOrWhiteSpace(issue.TableClassification)) return false;
+                }
+                else if (!string.Equals(issue.TableClassification, selectedClassification, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+            }
             if (_severityFilter.SelectedIndex == 1 && issue.Severity > DifferenceSeverity.High) return false;
             if (_severityFilter.SelectedIndex == 2 && issue.Severity != DifferenceSeverity.Critical) return false;
             if (_differenceFilter.SelectedIndex > 0)
@@ -715,6 +739,8 @@ namespace EnvironmentComparison.Ui
                 MessageBox.Show(this, "No differences match the table logical-name regular expression.", "Nothing to export", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
+            var environmentAName = _environmentALabel.Text.Trim();
+            var environmentBName = _environmentBLabel.Text.Trim();
 
             using (var dialog = new SaveFileDialog
             {
@@ -736,7 +762,7 @@ namespace EnvironmentComparison.Ui
                     {
                         using (var writer = new StreamWriter(fileName, false, new UTF8Encoding(false)))
                         {
-                            eventArgs.Result = _htmlExportService.Write(writer, result);
+                            eventArgs.Result = _htmlExportService.Write(writer, result, environmentAName, environmentBName);
                         }
                     })
                 {
@@ -873,6 +899,7 @@ namespace EnvironmentComparison.Ui
         private void ClearResult(string message)
         {
             _result = null;
+            PopulateClassificationFilter();
             _grid.Rows.Clear();
             _details.Items.Clear();
             _summaryLabel.Text = message;
@@ -887,6 +914,7 @@ namespace EnvironmentComparison.Ui
             _searchBox.Clear();
             _tableLogicalNameRegexBox.Clear();
             _scopeFilter.SelectedIndex = 0;
+            _classificationFilter.SelectedIndex = 0;
             _severityFilter.SelectedIndex = 0;
             _differenceFilter.SelectedIndex = 0;
             PopulateGrid();
@@ -939,6 +967,29 @@ namespace EnvironmentComparison.Ui
             panel.Controls.Add(_tableLogicalNameRegexLabel, 0, 0);
             panel.Controls.Add(_tableLogicalNameRegexBox, 0, 1);
             panel.Controls.Add(_tableLogicalNameRegexErrorLabel, 0, 2);
+            return panel;
+        }
+
+        private static Control CreateFilterField(string caption, Control control)
+        {
+            var panel = new TableLayoutPanel
+            {
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                ColumnCount = 1,
+                RowCount = 2,
+                Margin = new Padding(0, 0, 8, 0)
+            };
+            var label = new Label
+            {
+                AutoSize = true,
+                Text = caption,
+                ForeColor = MutedTextColor,
+                Margin = new Padding(0, 0, 0, 2)
+            };
+            control.Margin = new Padding(0);
+            panel.Controls.Add(label, 0, 0);
+            panel.Controls.Add(control, 0, 1);
             return panel;
         }
 
@@ -1060,6 +1111,35 @@ namespace EnvironmentComparison.Ui
         private bool TableLogicalNameRegexAppliesToSelectedAreas => (SelectedAreas & TableAssociatedAreas) != 0;
 
         private bool TableLogicalNameRegexHasError => _tableLogicalNameRegexErrorLabel.Text.Length > 0;
+
+        private void PopulateClassificationFilter()
+        {
+            var previousSelection = _classificationFilter.SelectedItem?.ToString() ?? AllClassificationsFilterText;
+            var classifications = (_result?.Issues ?? Array.Empty<ComparisonIssue>())
+                .Select(issue => issue.TableClassification.Trim())
+                .Where(value => value.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var hasUnclassified = _result?.Issues.Any(issue => string.IsNullOrWhiteSpace(issue.TableClassification)) == true;
+
+            _updatingClassificationFilter = true;
+            _classificationFilter.BeginUpdate();
+            try
+            {
+                _classificationFilter.Items.Clear();
+                _classificationFilter.Items.Add(AllClassificationsFilterText);
+                foreach (var classification in classifications) _classificationFilter.Items.Add(classification);
+                if (hasUnclassified) _classificationFilter.Items.Add(NoClassificationFilterText);
+                var previousIndex = _classificationFilter.Items.IndexOf(previousSelection);
+                _classificationFilter.SelectedIndex = previousIndex >= 0 ? previousIndex : 0;
+            }
+            finally
+            {
+                _classificationFilter.EndUpdate();
+                _updatingClassificationFilter = false;
+            }
+        }
 
         private void ApplyResponsiveLayout()
         {
@@ -1186,10 +1266,13 @@ namespace EnvironmentComparison.Ui
         {
             comboBox.DropDownStyle = ComboBoxStyle.DropDownList;
             comboBox.Width = 170;
-            comboBox.Margin = new Padding(0, 3, 8, 3);
+            comboBox.Margin = new Padding(0);
             comboBox.Items.AddRange(items.Cast<object>().ToArray());
             comboBox.SelectedIndex = 0;
-            comboBox.SelectedIndexChanged += (_, __) => PopulateGrid();
+            comboBox.SelectedIndexChanged += (_, __) =>
+            {
+                if (!_updatingClassificationFilter) PopulateGrid();
+            };
         }
 
         private void AddGridColumn(string name, string header, int width)

@@ -1,25 +1,53 @@
 # Environment Comparison user guide
 
-Environment Comparison answers a focused question: which important Dataverse definitions are missing or different between Environment A and Environment B?
+Environment Comparison shows which important Dataverse definitions are missing or materially different between two environments.
 
-## Quick start
+![Environment Comparison with fictional Contoso results](images/results.png)
 
-1. Select both saved XrmToolBox connections.
-2. Check the areas you want to compare.
-3. Compare published metadata unless draft customizations are intentionally in scope.
-4. Review Critical and High differences first.
-5. Filter to **Missing in Environment B** when validating a target deployment.
-6. Optionally apply a table logical-name regex such as `^(ata_|mshied_)` to the preview and exports. Reports are retained and the filter is disabled for report-only comparisons.
-7. Export the filtered result to CSV, or export all differences in the active table scope to the scalable HTML report when large values, interactive filtering, or rendered diffs are needed.
+> All screenshots in this guide use fictional Contoso connections and metadata.
 
-## Guides
+## Five-minute workflow
 
-- [Choosing comparison areas](comparison-areas.md)
-- [Interpreting and exporting results](interpreting-results.md)
-- [Extending the comparison engine](extending.md)
+1. Select the saved XrmToolBox connection that represents the expected state as **Environment A**.
+2. Select the environment being validated as **Environment B**.
+3. Check only the areas needed for this investigation.
+4. Compare published metadata unless draft customizations are intentionally in scope.
+5. Review Critical and High rows, apply filters, and export the useful result set.
 
-## Important boundaries
+**Missing in B** is normally the most important deployment direction: the definition exists in the reference environment but not in the target. **Missing in A** identifies additional definitions found only in the target. **Changed** means both sides were matched and an important property differs.
 
-The plugin compares table definitions, column metadata, system forms, system views, and organization SSRS reports registered in Dataverse. It does not compare table records, personal views or reports, reports stored only on an external SSRS server, form access assignments, app modules, security roles, solution layers, or managed-versus-unmanaged status.
+## Guide map
 
-Every environment operation is read-only. CSV export writes only to the local path selected by the operator.
+| Guide | Use it for |
+| --- | --- |
+| [Getting started](getting-started.md) | Connections, area selection, published state, regex scope, running a comparison |
+| [Choosing comparison areas](comparison-areas.md) | Exact properties, exclusions, component identity, and XML normalization |
+| [Interpreting results](interpreting-results.md) | Direction, severity, filters, fingerprints, and false-positive reduction |
+| [Exporting results](exporting-results.md) | CSV, HTML, raw JSON, Excel limits, and complete definitions |
+| [Troubleshooting](troubleshooting.md) | Empty results, slow retrieval, missing components, and export issues |
+| [Safety and data handling](safety-and-data-handling.md) | Read-only behavior, permissions, metadata content, and local exports |
+| [Roadmap](../ROADMAP.md) | Planned comparison areas, delivery improvements, and design investigations |
+| [Suggesting a feature](feature-suggestions.md) | Information needed for an actionable, safe comparison request |
+| [Contributing](../CONTRIBUTING.md) | Local setup, development rules, tests, and pull request submission |
+| [Extending the comparison engine](extending.md) | Developer steps for adding a comparison area |
+
+## Supported scope
+
+The plugin compares:
+
+- table metadata;
+- column metadata;
+- system forms and their role assignments;
+- system views;
+- organization SSRS reports registered in Dataverse.
+
+It deliberately does not compare:
+
+- business table records;
+- personal views or personal reports;
+- reports stored only in an external SSRS server catalog;
+- solution layers or managed-versus-unmanaged state;
+- component version stamps;
+- app modules, dashboards, charts, keys, relationships, business rules, or organization settings in the current release.
+
+Every environment operation is read-only. Export actions write only to a local path selected by the operator.

@@ -9,16 +9,24 @@ namespace EnvironmentComparison.Services
 {
     public sealed class HtmlExportService
     {
-        public int Write(TextWriter writer, IEnumerable<ComparisonIssue> issues)
+        public int Write(
+            TextWriter writer,
+            IEnumerable<ComparisonIssue> issues,
+            string environmentAName = "Environment A",
+            string environmentBName = "Environment B")
         {
             if (writer == null) throw new ArgumentNullException(nameof(writer));
             if (issues == null) throw new ArgumentNullException(nameof(issues));
 
             var rows = issues.ToList();
-            return WriteDocument(writer, rows, Array.Empty<ReportDefinitionInfo>());
+            return WriteDocument(writer, rows, Array.Empty<ReportDefinitionInfo>(), environmentAName, environmentBName);
         }
 
-        public int Write(TextWriter writer, MetadataComparisonResult result)
+        public int Write(
+            TextWriter writer,
+            MetadataComparisonResult result,
+            string environmentAName = "Environment A",
+            string environmentBName = "Environment B")
         {
             if (writer == null) throw new ArgumentNullException(nameof(writer));
             if (result == null) throw new ArgumentNullException(nameof(result));
@@ -44,16 +52,23 @@ namespace EnvironmentComparison.Services
                         reportB?.GetProperty("Raw RDL") ?? string.Empty);
                 })
                 .ToList();
-            return WriteDocument(writer, rows, definitions);
+            return WriteDocument(writer, rows, definitions, environmentAName, environmentBName);
         }
 
         private static int WriteDocument(
             TextWriter writer,
             IReadOnlyList<ComparisonIssue> rows,
-            IReadOnlyList<ReportDefinitionInfo> reportDefinitions)
+            IReadOnlyList<ReportDefinitionInfo> reportDefinitions,
+            string environmentAName,
+            string environmentBName)
         {
             writer.Write(DocumentStart);
-            WriteData(writer, rows, reportDefinitions);
+            WriteData(
+                writer,
+                rows,
+                reportDefinitions,
+                NormalizeEnvironmentName(environmentAName, "Environment A"),
+                NormalizeEnvironmentName(environmentBName, "Environment B"));
             writer.Write(DocumentEnd);
             return rows.Count;
         }
@@ -61,9 +76,14 @@ namespace EnvironmentComparison.Services
         private static void WriteData(
             TextWriter writer,
             IReadOnlyList<ComparisonIssue> issues,
-            IReadOnlyList<ReportDefinitionInfo> reportDefinitions)
+            IReadOnlyList<ReportDefinitionInfo> reportDefinitions,
+            string environmentAName,
+            string environmentBName)
         {
-            writer.Write("{\"formatVersion\":1,\"rowCount\":");
+            writer.Write('{');
+            WriteString(writer, "environmentAName", environmentAName, true);
+            WriteString(writer, "environmentBName", environmentBName, true);
+            writer.Write("\"formatVersion\":1,\"rowCount\":");
             writer.Write(issues.Count.ToString(CultureInfo.InvariantCulture));
             writer.Write(",\"rows\":[");
             for (var index = 0; index < issues.Count; index++)
@@ -80,6 +100,11 @@ namespace EnvironmentComparison.Services
             }
 
             writer.Write("]}");
+        }
+
+        private static string NormalizeEnvironmentName(string? value, string fallback)
+        {
+            return string.IsNullOrWhiteSpace(value) ? fallback : value!.Trim();
         }
 
         private static void WriteReportDefinition(TextWriter writer, ReportDefinitionInfo definition)
@@ -245,7 +270,7 @@ namespace EnvironmentComparison.Services
     .summary-card span { display:block; color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
     .summary-card strong { display:block; margin-top:3px; font-size:22px; }
     .panel { min-height:0; flex:1 1 auto; display:flex; flex-direction:column; overflow:hidden; background:var(--surface); border:1px solid var(--border); border-radius:12px; box-shadow:0 2px 10px rgba(15,23,42,.05); }
-    .filters { flex:0 0 auto; display:grid; grid-template-columns:minmax(260px,2fr) repeat(5,minmax(130px,1fr)) auto; gap:10px; padding:12px 14px; align-items:start; }
+    .filters { flex:0 0 auto; display:grid; grid-template-columns:minmax(260px,2fr) repeat(6,minmax(130px,1fr)) auto; gap:10px; padding:12px 14px; align-items:start; }
     .filters > .button { margin-top:20px; }
     .field label { display:block; margin-bottom:4px; color:var(--muted); font-size:12px; font-weight:600; }
     .field input,.field select { width:100%; min-height:36px; border:1px solid var(--border); border-radius:7px; background:#fff; color:var(--text); padding:6px 9px; }
@@ -339,7 +364,7 @@ namespace EnvironmentComparison.Services
 <body>
   <main class='shell'>
     <header class='hero'>
-      <div><h1>Dataverse environment comparison</h1><div class='subtle'>Environment A is the reference; Environment B is the comparison target.</div></div>
+      <div><h1>Dataverse environment comparison</h1><div class='subtle'>Environment A: <strong id='environmentAName'>Environment A</strong> (reference) &nbsp;&rarr;&nbsp; Environment B: <strong id='environmentBName'>Environment B</strong> (comparison target)</div></div>
       <div class='offline'>Base report works offline · no environment access</div>
     </header>
     <section class='summary' aria-label='Comparison summary'>
@@ -356,6 +381,7 @@ namespace EnvironmentComparison.Services
         <div class='field'><label for='scopeFilter'>Area</label><select id='scopeFilter'><option value=''>All areas</option><option>Table</option><option>Column</option><option>Form</option><option>View</option><option>Report</option></select></div>
         <div class='field'><label for='differenceFilter'>Difference</label><select id='differenceFilter'><option value=''>All differences</option><option>Missing in Environment B</option><option>Missing in Environment A</option><option>Changed</option></select></div>
         <div class='field'><label for='tableFilter'>Table</label><select id='tableFilter'><option value=''>All tables</option></select></div>
+        <div class='field'><label for='classificationFilter'>Classification</label><select id='classificationFilter'><option value=''>All classifications</option></select></div>
         <div class='field'><label for='propertyFilter'>Property</label><select id='propertyFilter'><option value=''>All properties</option></select></div>
         <button id='clearFilters' class='button' type='button'>Clear filters</button>
       </div>
@@ -417,6 +443,11 @@ namespace EnvironmentComparison.Services
     const reportDefinitions = new Map((report.reportDefinitions || []).map(definition => [String(definition.key || '').toLocaleLowerCase(), definition]));
     report.reportDefinitions = null;
     const elements = Object.fromEntries(Array.from(document.querySelectorAll('[id]')).map(element => [element.id, element]));
+    const environmentAName = String(report.environmentAName || 'Environment A');
+    const environmentBName = String(report.environmentBName || 'Environment B');
+    elements.environmentAName.textContent = environmentAName;
+    elements.environmentBName.textContent = environmentBName;
+    document.title = `${environmentAName} vs ${environmentBName} - Dataverse environment comparison`;
     const jsDiffUrl = 'https://cdn.jsdelivr.net/npm/diff@9.0.0/dist/diff.min.js';
     const diff2HtmlUrl = 'https://cdn.jsdelivr.net/npm/diff2html@3.4.56/bundles/js/diff2html.min.js';
     const diff2HtmlCssUrl = 'https://cdn.jsdelivr.net/npm/diff2html@3.4.56/bundles/css/diff2html.min.css';
@@ -458,8 +489,10 @@ namespace EnvironmentComparison.Services
 
     function initializeFilters() {
       const tables = Array.from(new Set(allRows.map(row => row.tableLogical || '__none__'))).sort((a,b) => a.localeCompare(b, undefined, {sensitivity:'base'}));
+      const classifications = Array.from(new Set(allRows.map(row => row.classification || '__none__'))).sort((a,b) => a.localeCompare(b, undefined, {sensitivity:'base'}));
       const properties = Array.from(new Set(allRows.map(row => row.property).filter(Boolean))).sort((a,b) => a.localeCompare(b, undefined, {sensitivity:'base'}));
       addOptions(elements.tableFilter, tables, 'No associated table');
+      addOptions(elements.classificationFilter, classifications, 'No classification');
       addOptions(elements.propertyFilter, properties, 'No property');
     }
 
@@ -631,6 +664,7 @@ namespace EnvironmentComparison.Services
         && (!filters.scope || row.scope === filters.scope)
         && (!filters.difference || row.difference === filters.difference)
         && (!filters.table || (filters.table === '__none__' ? !row.tableLogical : row.tableLogical === filters.table))
+        && (!filters.classification || (filters.classification === '__none__' ? !row.classification : row.classification === filters.classification))
         && (!filters.property || row.property === filters.property)
         && matchesSearch(row, filters.terms, filters.includeFullValues);
     }
@@ -641,6 +675,7 @@ namespace EnvironmentComparison.Services
         scope: elements.scopeFilter.value,
         difference: elements.differenceFilter.value,
         table: elements.tableFilter.value,
+        classification: elements.classificationFilter.value,
         property: elements.propertyFilter.value,
         terms: normalize(elements.search.value).split(/\s+/).filter(Boolean),
         includeFullValues: elements.searchFullValues.checked
@@ -983,8 +1018,8 @@ namespace EnvironmentComparison.Services
       return new Promise((resolve, reject) => {
         try {
           window.Diff.createTwoFilesPatch(
-            'Environment A',
-            'Environment B',
+            environmentAName,
+            environmentBName,
             a,
             b,
             '',
@@ -1068,6 +1103,7 @@ namespace EnvironmentComparison.Services
       elements.scopeFilter.value = '';
       elements.differenceFilter.value = '';
       elements.tableFilter.value = '';
+      elements.classificationFilter.value = '';
       elements.propertyFilter.value = '';
       scheduleFilter(true);
     }
@@ -1080,7 +1116,7 @@ namespace EnvironmentComparison.Services
       sortRows();
       render();
     }));
-    ['severityFilter','scopeFilter','differenceFilter','tableFilter','propertyFilter','searchFullValues'].forEach(id => elements[id].addEventListener('change', () => scheduleFilter(true)));
+    ['severityFilter','scopeFilter','differenceFilter','tableFilter','classificationFilter','propertyFilter','searchFullValues'].forEach(id => elements[id].addEventListener('change', () => scheduleFilter(true)));
     elements.search.addEventListener('input', () => scheduleFilter(false));
     elements.clearFilters.addEventListener('click', clearFilters);
     elements.resetColumns.addEventListener('click', resetColumnWidths);

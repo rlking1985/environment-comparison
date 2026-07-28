@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.Drawing;
@@ -5,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Windows.Forms;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using EnvironmentComparison.Domain;
 using EnvironmentComparison.Ui;
 using XrmToolBox.Extensibility;
 
@@ -57,6 +59,65 @@ namespace EnvironmentComparison.Tests
                     !.GetValue(control)!;
                 Assert.IsTrue(tableRegexBox.Enabled);
                 Assert.AreEqual("Table logical name regular expression", tableRegexBox.AccessibleName);
+                Assert.AreEqual(string.Empty, tableRegexBox.Text);
+                var searchBox = (TextBox)typeof(EnvironmentComparisonControl)
+                    .GetField("_searchBox", BindingFlags.Instance | BindingFlags.NonPublic)
+                    !.GetValue(control)!;
+                var scopeFilter = (ComboBox)typeof(EnvironmentComparisonControl)
+                    .GetField("_scopeFilter", BindingFlags.Instance | BindingFlags.NonPublic)
+                    !.GetValue(control)!;
+                var classificationFilter = (ComboBox)typeof(EnvironmentComparisonControl)
+                    .GetField("_classificationFilter", BindingFlags.Instance | BindingFlags.NonPublic)
+                    !.GetValue(control)!;
+                Assert.AreEqual("All classifications", classificationFilter.Items[0]);
+                var severityFilter = (ComboBox)typeof(EnvironmentComparisonControl)
+                    .GetField("_severityFilter", BindingFlags.Instance | BindingFlags.NonPublic)
+                    !.GetValue(control)!;
+                var differenceFilter = (ComboBox)typeof(EnvironmentComparisonControl)
+                    .GetField("_differenceFilter", BindingFlags.Instance | BindingFlags.NonPublic)
+                    !.GetValue(control)!;
+                var clearFiltersButton = (Button)typeof(EnvironmentComparisonControl)
+                    .GetField("_clearFiltersButton", BindingFlags.Instance | BindingFlags.NonPublic)
+                    !.GetValue(control)!;
+                foreach (var filterControl in new Control[] { searchBox, tableRegexBox, classificationFilter, scopeFilter, severityFilter, differenceFilter, clearFiltersButton })
+                {
+                    filterControl.Parent.PerformLayout();
+                    Assert.IsInstanceOfType(filterControl.Parent, typeof(TableLayoutPanel));
+                }
+
+                Assert.AreEqual(searchBox.Top, tableRegexBox.Top);
+                Assert.AreEqual(searchBox.Top, classificationFilter.Top);
+                Assert.AreEqual(searchBox.Top, scopeFilter.Top);
+                Assert.AreEqual(searchBox.Top, severityFilter.Top);
+                Assert.AreEqual(searchBox.Top, differenceFilter.Top);
+                Assert.AreEqual(searchBox.Top, clearFiltersButton.Top);
+            }
+        }
+
+        [TestMethod]
+        public void ClassificationFilterUsesValuesPresentInTheComparison()
+        {
+            using (var control = new EnvironmentComparisonControl())
+            {
+                var type = typeof(EnvironmentComparisonControl);
+                var standardIssue = IssueWithClassification("ata_student", "Standard");
+                var bpfIssue = IssueWithClassification("mshied_process", "BPF");
+                var reportIssue = IssueWithClassification(string.Empty, string.Empty, ComparisonScope.Report);
+                var snapshot = new EnvironmentMetadataSnapshot(Array.Empty<TableMetadataInfo>());
+                var result = new MetadataComparisonResult(snapshot, snapshot, new[] { standardIssue, bpfIssue, reportIssue });
+                type.GetField("_result", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(control, result);
+                type.GetMethod("PopulateClassificationFilter", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(control, null);
+                var filter = (ComboBox)type.GetField("_classificationFilter", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(control)!;
+
+                CollectionAssert.AreEqual(
+                    new[] { "All classifications", "BPF", "Standard", "No classification" },
+                    filter.Items.Cast<string>().ToArray());
+
+                filter.SelectedItem = "Standard";
+                var matchesFilters = type.GetMethod("MatchesFilters", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                Assert.IsTrue((bool)matchesFilters.Invoke(control, new object[] { standardIssue }));
+                Assert.IsFalse((bool)matchesFilters.Invoke(control, new object[] { bpfIssue }));
+                Assert.IsFalse((bool)matchesFilters.Invoke(control, new object[] { reportIssue }));
             }
         }
 
@@ -129,6 +190,26 @@ namespace EnvironmentComparison.Tests
                 Assert.IsTrue(control.UsesCompactLayout);
                 Assert.AreEqual(1, control.EnvironmentLayoutColumnCount);
             }
+        }
+
+        private static ComparisonIssue IssueWithClassification(
+            string tableLogicalName,
+            string classification,
+            ComparisonScope scope = ComparisonScope.Table)
+        {
+            return new ComparisonIssue(
+                DifferenceSeverity.High,
+                scope,
+                DifferenceKind.Changed,
+                tableLogicalName,
+                tableLogicalName,
+                tableLogicalName + "|component",
+                "Component",
+                "Property",
+                "A",
+                "B",
+                "Different",
+                classification);
         }
     }
 }

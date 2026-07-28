@@ -1,4 +1,4 @@
-# Interpreting and exporting results
+# Interpreting results
 
 ## Direction
 
@@ -6,43 +6,90 @@
 - **Missing in A** means the definition exists only in Environment B.
 - **Changed** means both sides were matched but an important property differs.
 
-SSRS reports use their report ID as the primary match. If IDs differ, the tool can fallback match a unique report name, filename, report type, and language combination. Every resulting changed row explains that fallback in Details and includes both IDs. The ID difference is also listed explicitly. If that identity is duplicated, no fallback match is made.
+Environment A is normally the reference or source. Environment B is the target being validated.
 
-Environment A is normally the reference/source and Environment B the target being validated.
+For SSRS reports, Report ID is the primary identity. If IDs differ, the plugin can fallback match a unique report name, filename, report type, and language combination. Details explains every fallback and includes both IDs. If that identity is duplicated, no fallback match is made.
 
 ## Severity
 
-- **Critical** — likely to change storage, behavior, query results, required input, or component availability.
-- **High** — important operational, security, audit, format, or component-presence difference.
-- **Medium** — meaningful behavior difference that is less likely to block deployment.
-- **Low** — display text or description difference worth reviewing but unlikely to break behavior.
+| Severity | Intended meaning |
+| --- | --- |
+| Critical | Likely to affect storage, required input, runtime behavior, queries, or component availability |
+| High | Important operational, security, audit, format, identity, or component-presence difference |
+| Medium | Meaningful behavior difference that is less likely to block a deployment |
+| Low | Display text or description difference worth reviewing but unlikely to break behavior |
 
-Severity is a prioritization aid. Review business context before deciding whether a difference is correct.
+Severity is a prioritization aid, not an automatic deployment decision. Review the business purpose of each component before accepting or rejecting a difference.
+
+## Result columns
+
+| Column | Meaning |
+| --- | --- |
+| Severity | Suggested review priority |
+| Area | Table, Column, Form, View, or Report |
+| Difference | Missing in A, Missing in B, or Changed |
+| Table | Display and logical name for table-associated rows |
+| Table classification | Standard, Intersect, BPF, or blank for organization-level rows |
+| Component | Column, form, view, or report identity |
+| Property | The presence or metadata setting that differs |
+| Environment A/B | Compact values or definition fingerprints |
+| Details | Plain-language explanation and any fallback or rename hint |
 
 ## Filters
 
-Search checks table names, table classification, component names and keys, properties, both preview values, and the explanation. Area, severity, and direction filters can be combined. The table logical-name regex is a post-retrieval scope for tables, columns, forms, and views; reports and other organization-level rows are always retained. It is disabled when only reports are selected. **Export filtered CSV** exports exactly the visible filtered set. **Export filterable HTML** exports every difference in the active table regex scope so that set can be filtered independently in a browser.
+The plugin filters can be combined:
 
-## XML definitions
+- **Search** checks table names, classification, component names and keys, property, preview values, and Details.
+- **Table logical name regex** scopes table, column, form, and view rows after retrieval.
+- **Classification** is populated from the comparison. **No classification** selects reports and other organization-level rows.
+- **Area** limits the component type.
+- **Severity** limits review priority.
+- **Difference** limits direction or changed rows.
 
-Formula definitions, forms, and views are normalized before comparison, so indentation, line endings, and XML attribute order do not create false differences. The grid and detail preview show SHA-256 fingerprints to remain responsive. A different fingerprint means the normalized definition changed.
+The regex does not remove report or organization-level rows. It is disabled when only reports are selected.
 
-CSV export contains the complete normalized Environment A and Environment B XML values, not the fingerprints. This allows the definitions to be inspected or diffed outside the tool without making the grid hold and render large XML values.
+Select **Clear filters** to return to the complete result within the active table regex scope.
 
-For view Layout XML, the environment-specific root `grid/@object` value is ignored when deciding whether a difference exists. If another layout setting differs, the issue is retained and the CSV still contains the original complete XML from both environments.
+![A selected fictional column difference](images/selected-difference.png)
 
-## Filterable HTML export
+## Definition fingerprints
 
-The HTML export is a single file and makes no environment calls. Its base features work offline: search, exact severity/area/difference/table/property filters, sortable and drag-resizable columns, live summary counts, and page sizes of 50, 100, 250, or 500 rows. The page uses one primary results scroller instead of nested page and table scrolling. Search and filtering are debounced and processed in browser-sized chunks, and only the selected page is added to the table, which keeps the page responsive when the comparison contains many rows. The enhanced diff has its own contained horizontal and vertical scrolling, and results-table styles are isolated so they do not distort Diff2Html's internal layout.
+Formula definitions, forms, views, report filters, and RDL are normalized before comparison. Indentation, line endings, and XML attribute order do not create false differences.
 
-The main table uses the same compact preview values as the plugin. **Inspect** is available only for changed rows, where both Environment A and Environment B provide values to compare; missing/presence-only rows show no inspection action. The viewer supports wrapping, copying, and downloading either complete value. For report rows, the value selector also exposes the report's complete normalized and raw RDL XML, even when the selected report issue is for another property. XML and all other metadata are inserted as text rather than executable HTML, and embedded report data is escaped so metadata cannot close or inject the report's data script block.
+The plugin grid shows SHA-256 fingerprints for changed large definitions. A different fingerprint means the normalized content is different; it does not show where it differs.
 
-The pinned jsdiff 9.0.0 engine and Diff2Html 3.4.56 renderer load automatically from jsDelivr. Select **Show enhanced diff** to render the current values, then use the same button—now labelled **Show normal values**—to toggle back. The layout can be changed between side-by-side and line-by-line. XML structural tags are split onto separate diff lines even when the definition contains multiline SQL, and long diff lines wrap by default. **Disable wrapping** switches both normal and enhanced views to horizontal scrolling when exact line layout is preferred. If the CDN is unavailable, complete side-by-side values, copy, and download continue to work offline. Diff calculation is on demand and includes a maximum edit limit so exceptionally dissimilar values do not lock the report indefinitely.
+Use one of these options to inspect complete values:
 
-Unlike Excel, the HTML viewer does not split values at 32,767 characters. Its practical limit is the browser's available memory and the size of the generated file; the paged table prevents large values from being rendered until they are inspected. Column widths can be changed by dragging a header boundary, restored with **Reset column widths**, or individually reset by double-clicking a boundary.
+- CSV for complete normalized values split into Excel-safe cells when needed;
+- HTML **Inspect** for side-by-side values and enhanced diffs;
+- raw JSON for retrieved and normalized diagnostic snapshots.
 
-## CSV safety
+For view Layout XML, only the environment-specific root `grid/@object` value is ignored. If another layout setting differs, the issue remains and exports retain the complete XML.
 
-Every field is quoted. Values beginning with spreadsheet formula characters are prefixed with an apostrophe to prevent formula execution when the file is opened in Excel.
+## Common review patterns
 
-Excel limits a cell to 32,767 characters. When any Environment A or Environment B value exceeds that limit, the export creates numbered columns such as `Environment A (part 1 of 3)`. Each part stays within the Excel-safe limit, the issue remains on one row, and concatenating the numbered parts recreates the complete value. If no values are oversized, the normal 12-column layout is retained.
+### A table or column is Missing in B
+
+Confirm the component should be deployed to the target. A missing table also causes every selected column on that table to appear missing, so start with the table row before reviewing its dependent column rows.
+
+### A column has a possible rename hint
+
+The plugin found an A-only and B-only column with compatible metadata. Verify whether the B column was deliberately recreated or whether the source column is missing. Logical names remain important for forms, views, integrations, plugins, reports, and managed-solution identity.
+
+### Many forms or views appear missing
+
+Confirm the connection direction, published/unpublished choice, and permissions. Then inspect component keys in raw JSON. Forms use `UniqueName` when available and views use their saved-query identity; environment-specific publication IDs are not intended to create presence differences.
+
+### A system view reports Layout XML
+
+Root object type codes are already ignored. Remaining layout differences indicate another attribute, row, cell, order, or width changed.
+
+### A report is fallback matched
+
+Read Details. The plugin found one report on each side with the same name, filename, report type, and language but different IDs. The report is compared as one component, and the ID difference remains visible because matching IDs can matter for solution deployment.
+
+## Managed and unmanaged components
+
+Managed-versus-unmanaged status is intentionally not compared. The plugin reports metadata behavior, presence, and definitions, not solution layering. A difference that exists only because one component is managed and the other is unmanaged should therefore not appear unless an important property also differs.
+
+Continue to [Exporting results](exporting-results.md) or [Troubleshooting](troubleshooting.md).

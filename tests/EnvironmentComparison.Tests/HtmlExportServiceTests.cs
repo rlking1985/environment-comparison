@@ -25,13 +25,22 @@ namespace EnvironmentComparison.Tests
             int count;
             using (var writer = new StringWriter())
             {
-                count = new HtmlExportService().Write(writer, issues);
+                count = new HtmlExportService().Write(
+                    writer,
+                    issues,
+                    "Scholarion Initial Build <A>",
+                    "Atturra Tier 1 & Dev");
                 html = writer.ToString();
             }
 
             Assert.AreEqual(2, count);
             StringAssert.StartsWith(html, "<!doctype html>");
             StringAssert.Contains(html, "id='comparison-data'");
+            StringAssert.Contains(html, "id='environmentAName'");
+            StringAssert.Contains(html, "id='environmentBName'");
+            StringAssert.Contains(html, "\"environmentAName\":\"Scholarion Initial Build \\u003CA\\u003E\"");
+            StringAssert.Contains(html, "\"environmentBName\":\"Atturra Tier 1 \\u0026 Dev\"");
+            StringAssert.Contains(html, "document.title = `${environmentAName} vs ${environmentBName} - Dataverse environment comparison`");
             StringAssert.Contains(html, "Rows per page");
             StringAssert.Contains(html, "requestAnimationFrame(processChunk)");
             StringAssert.Contains(html, "Only the current page is rendered.");
@@ -54,12 +63,18 @@ namespace EnvironmentComparison.Tests
             StringAssert.Contains(html, ".table-wrap { min-height:0; flex:1 1 auto; overflow:auto;");
             StringAssert.Contains(html, "scrollbar-gutter:stable both-edges");
             StringAssert.Contains(html, ".filters { flex:0 0 auto; display:grid;");
+            StringAssert.Contains(html, "repeat(6,minmax(130px,1fr))");
             StringAssert.Contains(html, "align-items:start;");
             StringAssert.Contains(html, ".filters > .button { margin-top:20px; }");
             StringAssert.Contains(html, "#resultsTable > tbody td { padding:9px;");
             Assert.IsFalse(html.Contains("\n    table { width:1765px;"));
             Assert.IsFalse(html.Contains("\n    td { padding:9px;"));
             StringAssert.Contains(html, "class='action-column'");
+            StringAssert.Contains(html, "id='classificationFilter'");
+            StringAssert.Contains(html, "All classifications");
+            StringAssert.Contains(html, "addOptions(elements.classificationFilter, classifications, 'No classification')");
+            StringAssert.Contains(html, "filters.classification === '__none__' ? !row.classification : row.classification === filters.classification");
+            StringAssert.Contains(html, "'classificationFilter'");
             StringAssert.Contains(html, "toggleEnhancedDiff");
             StringAssert.Contains(html, "Show normal values");
             StringAssert.Contains(html, "class='drawer-actions'><button id='showDiff'");

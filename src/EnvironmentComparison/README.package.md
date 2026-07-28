@@ -1,9 +1,37 @@
 # Environment Comparison
 
-Environment Comparison is a read-only XrmToolBox tool for comparing Dataverse table, column, form, system-view, and organization SSRS-report metadata between two saved connections.
+Environment Comparison is a read-only XrmToolBox tool for comparing important Dataverse definitions between two saved connections.
 
-It reports missing components, table classification (`Standard`, `Intersect`, or `BPF`), display-name changes, schema and type mismatches, and important metadata settings such as requirement level, auditing, field security, create/read/update availability, maximum length, precision, formats, lookup targets, choices, autonumber formats, formulas, forms, system views, and SSRS report definitions/publication settings.
+## Compare
 
-The tool deliberately excludes records, personal views/reports, external-only SSRS reports, solution layers, and managed-versus-unmanaged status. It uses metadata retrieval and read-only queries against `systemform`, `savedquery`, `report`, `reportentity`, `reportcategory`, and `reportvisibility`. There is no create, update, delete, associate, disassociate, import, export, publish, or other Dataverse write path.
+- table metadata and classification (`Standard`, `Intersect`, or `BPF`);
+- columns and important field settings;
+- system forms and form security role assignments;
+- system views, FetchXML, Layout XML, and column-set XML;
+- organization SSRS report settings, registrations, and RDL.
 
-Choose **Environment A** and **Environment B**, select the comparison areas, then select **Compare metadata**. Published metadata is compared by default; including unpublished metadata is an explicit option and uses Dataverse's read-only unpublished retrieval for forms, views, and reports. Large definition sets are retrieved in bounded pages to avoid oversized long-running responses. Formula, form, view, default-filter, and RDL XML is normalized to ignore formatting-only differences. Form comparison also ignores generated label resource IDs and IDs on empty placeholder cells while retaining meaningful cell identities. Forms are matched by UniqueName when available and otherwise by their System Form component ID. Standard form security roles are matched through stable role-template IDs, while custom roles retain their deployed root-role identity. Environment-specific root grid object type codes are ignored for view Layout XML equality. SSRS reports are matched by report ID first, then by a unique name, filename, report type, and language fallback; fallback matches report the ID change and match method. A post-retrieval table logical-name regex can scope table, column, form, and view preview/export rows; reports remain included, and the control is disabled for report-only comparisons. The grid shows compact fingerprints and the differences CSV includes complete normalized definitions. **Export filterable HTML** writes every difference in the active table scope to a paged report with one primary results scroller, contained enhanced-diff scrollbars, isolated Diff2Html layout, sortable/resizable columns, and complete side-by-side values for changed rows. Missing rows are not inspectable. Report rows include normalized and raw RDL. Pinned jsdiff and Diff2Html files load automatically from jsDelivr; enhanced diffs wrap by default and toggle back to normal values from the same button. A temporary **Export raw metadata (JSON)** button writes structured snapshots from both environments within the active table scope; without a regex they are unfiltered.
+The plugin reports missing components and materially changed properties. It normalizes XML and ignores managed-versus-unmanaged state, solution layers, version stamps, and known environment-generated noise.
+
+## Use
+
+1. Choose Environment A as the reference.
+2. Choose Environment B as the target.
+3. Select one or more comparison areas.
+4. Compare published metadata unless draft customizations are intentionally required.
+5. Filter the result and export CSV, filterable HTML, or diagnostic raw JSON.
+
+Environment operations are reads only. The plugin does not retrieve business table records and has no create, update, delete, import, publish, or solution-operation path.
+
+The table logical-name regex scopes table-associated preview and exports after retrieval. Table classification, area, severity, difference, and search filters can be combined. HTML export provides independent browser filters, resizable columns, complete-value inspection, and enhanced diffs for changed rows.
+
+## Documentation
+
+- [User guide](https://github.com/rlking1985/environment-comparison/tree/dev/docs)
+- [Getting started](https://github.com/rlking1985/environment-comparison/blob/dev/docs/getting-started.md)
+- [Comparison areas](https://github.com/rlking1985/environment-comparison/blob/dev/docs/comparison-areas.md)
+- [Exporting results](https://github.com/rlking1985/environment-comparison/blob/dev/docs/exporting-results.md)
+- [Troubleshooting](https://github.com/rlking1985/environment-comparison/blob/dev/docs/troubleshooting.md)
+- [Safety and data handling](https://github.com/rlking1985/environment-comparison/blob/dev/docs/safety-and-data-handling.md)
+- [Roadmap](https://github.com/rlking1985/environment-comparison/blob/dev/ROADMAP.md)
+- [Suggesting a feature](https://github.com/rlking1985/environment-comparison/blob/dev/docs/feature-suggestions.md)
+- [Contributing](https://github.com/rlking1985/environment-comparison/blob/dev/CONTRIBUTING.md)
