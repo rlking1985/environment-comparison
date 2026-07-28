@@ -105,6 +105,23 @@ namespace EnvironmentComparison.Services
                 ["Advanced group by"] = DifferenceSeverity.High
             };
 
+        private static readonly IReadOnlyDictionary<string, DifferenceSeverity> ReportPropertySeverity =
+            new Dictionary<string, DifferenceSeverity>(StringComparer.Ordinal)
+            {
+                ["Report ID"] = DifferenceSeverity.High,
+                ["Name"] = DifferenceSeverity.Low,
+                ["Description"] = DifferenceSeverity.Low,
+                ["File name"] = DifferenceSeverity.Medium,
+                ["Report status"] = DifferenceSeverity.High,
+                ["Language code"] = DifferenceSeverity.Medium,
+                ["MIME type"] = DifferenceSeverity.Low,
+                ["Default filter"] = DifferenceSeverity.High,
+                ["Associated tables"] = DifferenceSeverity.Critical,
+                ["Categories"] = DifferenceSeverity.Medium,
+                ["Visibility"] = DifferenceSeverity.High,
+                ["RDL"] = DifferenceSeverity.Critical
+            };
+
         private static readonly HashSet<string> DefinitionProperties =
             new HashSet<string>(StringComparer.Ordinal)
             {
@@ -112,7 +129,9 @@ namespace EnvironmentComparison.Services
                 "Form XML",
                 "Fetch XML",
                 "Layout XML",
-                "Column set XML"
+                "Column set XML",
+                "Default filter",
+                "RDL"
             };
 
         public MetadataComparisonResult Compare(
@@ -183,6 +202,11 @@ namespace EnvironmentComparison.Services
             if ((selectedAreas & ComparisonAreas.Views) != 0)
             {
                 CompareViews(environmentA, environmentB, tablesA, tablesB, issues);
+            }
+
+            if ((selectedAreas & ComparisonAreas.Reports) != 0)
+            {
+                CompareReports(environmentA, environmentB, issues);
             }
 
             return new MetadataComparisonResult(environmentA, environmentB, issues);
@@ -338,6 +362,177 @@ namespace EnvironmentComparison.Services
             }
         }
 
+        private static void CompareReports(
+            EnvironmentMetadataSnapshot environmentA,
+            EnvironmentMetadataSnapshot environmentB,
+            ICollection<ComparisonIssue> issues)
+        {
+            var reportsA = environmentA.Reports.ToDictionary(report => report.Key, StringComparer.OrdinalIgnoreCase);
+            var reportsB = environmentB.Reports.ToDictionary(report => report.Key, StringComparer.OrdinalIgnoreCase);
+
+            var matchedA = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var matchedB = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var key in reportsA.Keys.Intersect(reportsB.Keys, StringComparer.OrdinalIgnoreCase))
+            {
+                CompareReportPair(reportsA[key], reportsB[key], string.Empty, issues);
+                matchedA.Add(key);
+                matchedB.Add(key);
+            }
+
+            var remainingA = reportsA.Values.Where(report => !matchedA.Contains(report.Key)).ToList();
+            var remainingB = reportsB.Values.Where(report => !matchedB.Contains(report.Key)).ToList();
+            var fallbackGroupsA = GroupReportsByFallbackIdentity(remainingA);
+            var fallbackGroupsB = GroupReportsByFallbackIdentity(remainingB);
+
+            foreach (var identity in fallbackGroupsA.Keys.Intersect(fallbackGroupsB.Keys, StringComparer.OrdinalIgnoreCase))
+            {
+                var candidatesA = fallbackGroupsA[identity];
+                var candidatesB = fallbackGroupsB[identity];
+                if (candidatesA.Count != 1 || candidatesB.Count != 1)
+                {
+                    continue;
+                }
+
+                var reportA = candidatesA[0];
+                var reportB = candidatesB[0];
+                var fallbackDetails = "Fallback matched by report name, filename, report type and language because the report IDs differ. "
+                    + $"Environment A ID: '{ReportIdValue(reportA)}'; Environment B ID: '{ReportIdValue(reportB)}'.";
+                CompareReportPair(reportA, reportB, fallbackDetails, issues);
+                matchedA.Add(reportA.Key);
+                matchedB.Add(reportB.Key);
+            }
+
+            foreach (var report in remainingA.Where(report => !matchedA.Contains(report.Key)))
+            {
+                AddReportPresenceIssue(
+                    report,
+                    DifferenceKind.MissingInEnvironmentB,
+                    FallbackAmbiguityDetails(report, fallbackGroupsA, fallbackGroupsB),
+                    issues);
+            }
+
+            foreach (var report in remainingB.Where(report => !matchedB.Contains(report.Key)))
+            {
+                AddReportPresenceIssue(
+                    report,
+                    DifferenceKind.MissingInEnvironmentA,
+                    FallbackAmbiguityDetails(report, fallbackGroupsB, fallbackGroupsA),
+                    issues);
+            }
+        }
+
+        private static void CompareReportPair(
+            ReportMetadataInfo reportA,
+            ReportMetadataInfo reportB,
+            string fallbackDetails,
+            ICollection<ComparisonIssue> issues)
+        {
+            CompareComponentProperties(
+                ComparisonScope.Report,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                reportA.Key,
+                Prefer(reportA.Name, reportB.Name),
+                property => string.Equals(property, "Report ID", StringComparison.Ordinal)
+                    ? ReportIdValue(reportA)
+                    : reportA.GetProperty(property),
+                property => string.Equals(property, "Report ID", StringComparison.Ordinal)
+                    ? ReportIdValue(reportB)
+                    : reportB.GetProperty(property),
+                ReportPropertySeverity,
+                issues,
+                fallbackDetails,
+                reportA.Key,
+                reportB.Key);
+        }
+
+        private static void AddReportPresenceIssue(
+            ReportMetadataInfo report,
+            DifferenceKind kind,
+            string additionalDetails,
+            ICollection<ComparisonIssue> issues)
+        {
+            var missingInB = kind == DifferenceKind.MissingInEnvironmentB;
+            var details = missingInB
+                ? "The organization SSRS report exists in Environment A but is missing from Environment B."
+                : "The organization SSRS report exists in Environment B but is missing from Environment A.";
+            if (!string.IsNullOrWhiteSpace(additionalDetails))
+            {
+                details += " " + additionalDetails;
+            }
+
+            issues.Add(new ComparisonIssue(
+                missingInB ? DifferenceSeverity.High : DifferenceSeverity.Medium,
+                ComparisonScope.Report,
+                kind,
+                string.Empty,
+                string.Empty,
+                report.Key,
+                report.Name,
+                "Report presence",
+                missingInB ? "Present" : "Missing",
+                missingInB ? "Missing" : "Present",
+                details));
+        }
+
+        private static IReadOnlyDictionary<string, IReadOnlyList<ReportMetadataInfo>> GroupReportsByFallbackIdentity(
+            IEnumerable<ReportMetadataInfo> reports)
+        {
+            return reports
+                .Select(report => new { Report = report, Identity = ReportFallbackIdentity(report) })
+                .Where(item => !string.IsNullOrEmpty(item.Identity))
+                .GroupBy(item => item.Identity, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => (IReadOnlyList<ReportMetadataInfo>)group.Select(item => item.Report).ToList(),
+                    StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static string ReportFallbackIdentity(ReportMetadataInfo report)
+        {
+            var name = Prefer(report.GetProperty("Name"), report.Name).Trim();
+            var fileName = report.GetProperty("File name").Trim();
+            var reportType = report.GetProperty("Report type").Trim();
+            var languageCode = report.GetProperty("Language code").Trim();
+            if (name.Length == 0 || fileName.Length == 0 || reportType.Length == 0 || languageCode.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            return string.Join("\u001f", name, fileName, reportType, languageCode);
+        }
+
+        private static string ReportIdValue(ReportMetadataInfo report)
+        {
+            var reportId = report.GetProperty("Report ID");
+            const string keyPrefix = "report|id:";
+            return reportId.Length > 0
+                ? reportId
+                : report.Key.StartsWith(keyPrefix, StringComparison.OrdinalIgnoreCase)
+                    ? report.Key.Substring(keyPrefix.Length)
+                    : report.Key;
+        }
+
+        private static string FallbackAmbiguityDetails(
+            ReportMetadataInfo report,
+            IReadOnlyDictionary<string, IReadOnlyList<ReportMetadataInfo>> ownGroups,
+            IReadOnlyDictionary<string, IReadOnlyList<ReportMetadataInfo>> otherGroups)
+        {
+            var identity = ReportFallbackIdentity(report);
+            if (identity.Length == 0
+                || !ownGroups.TryGetValue(identity, out var ownCandidates)
+                || !otherGroups.TryGetValue(identity, out var otherCandidates)
+                || (ownCandidates.Count == 1 && otherCandidates.Count == 1))
+            {
+                return string.Empty;
+            }
+
+            return "A fallback match was not used because the report identity was ambiguous "
+                + $"({ownCandidates.Count} candidate(s) in this environment and {otherCandidates.Count} in the other environment).";
+        }
+
         private static void CompareComponentProperties(
             ComparisonScope scope,
             string tableLogicalName,
@@ -348,7 +543,10 @@ namespace EnvironmentComparison.Services
             Func<string, string> valueA,
             Func<string, string> valueB,
             IEnumerable<KeyValuePair<string, DifferenceSeverity>> properties,
-            ICollection<ComparisonIssue> issues)
+            ICollection<ComparisonIssue> issues,
+            string additionalDetails = "",
+            string? environmentAComponentKey = null,
+            string? environmentBComponentKey = null)
         {
             foreach (var property in properties)
             {
@@ -361,6 +559,12 @@ namespace EnvironmentComparison.Services
 
                 var definition = IsDefinitionProperty(property.Key);
 
+                var details = $"{scope} setting '{property.Key}' is different.";
+                if (!string.IsNullOrWhiteSpace(additionalDetails))
+                {
+                    details += " " + additionalDetails;
+                }
+
                 issues.Add(new ComparisonIssue(
                     property.Value,
                     scope,
@@ -372,10 +576,12 @@ namespace EnvironmentComparison.Services
                     property.Key,
                     first,
                     second,
-                    $"{scope} setting '{property.Key}' is different.",
+                    details,
                     tableClassification,
                     definition ? DataverseMetadataService.DefinitionFingerprint(first) : null,
-                    definition ? DataverseMetadataService.DefinitionFingerprint(second) : null));
+                    definition ? DataverseMetadataService.DefinitionFingerprint(second) : null,
+                    environmentAComponentKey,
+                    environmentBComponentKey));
             }
         }
 

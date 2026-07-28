@@ -42,6 +42,42 @@ namespace EnvironmentComparison.Tests
                     !.GetValue(control)!;
                 Assert.AreEqual("Export raw metadata (JSON)", rawExportButton.Text);
                 Assert.IsFalse(rawExportButton.Enabled);
+                var htmlExportButton = (Button)typeof(EnvironmentComparisonControl)
+                    .GetField("_htmlExportButton", BindingFlags.Instance | BindingFlags.NonPublic)
+                    !.GetValue(control)!;
+                Assert.AreEqual("Export filterable HTML", htmlExportButton.Text);
+                Assert.IsFalse(htmlExportButton.Enabled);
+                var reportsCheckBox = (CheckBox)typeof(EnvironmentComparisonControl)
+                    .GetField("_reportsCheckBox", BindingFlags.Instance | BindingFlags.NonPublic)
+                    !.GetValue(control)!;
+                Assert.AreEqual("SSRS reports", reportsCheckBox.Text);
+                Assert.IsTrue(reportsCheckBox.Checked);
+                var tableRegexBox = (TextBox)typeof(EnvironmentComparisonControl)
+                    .GetField("_tableLogicalNameRegexBox", BindingFlags.Instance | BindingFlags.NonPublic)
+                    !.GetValue(control)!;
+                Assert.IsTrue(tableRegexBox.Enabled);
+                Assert.AreEqual("Table logical name regular expression", tableRegexBox.AccessibleName);
+            }
+        }
+
+        [TestMethod]
+        public void TableRegexIsDisabledForReportOnlyComparisons()
+        {
+            using (var control = new EnvironmentComparisonControl())
+            {
+                var type = typeof(EnvironmentComparisonControl);
+                var tableRegexBox = (TextBox)type
+                    .GetField("_tableLogicalNameRegexBox", BindingFlags.Instance | BindingFlags.NonPublic)
+                    !.GetValue(control)!;
+                foreach (var fieldName in new[] { "_tablesCheckBox", "_columnsCheckBox", "_formsCheckBox", "_viewsCheckBox" })
+                {
+                    ((CheckBox)type.GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(control)!).Checked = false;
+                }
+
+                Assert.IsFalse(tableRegexBox.Enabled);
+
+                ((CheckBox)type.GetField("_viewsCheckBox", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(control)!).Checked = true;
+                Assert.IsTrue(tableRegexBox.Enabled);
             }
         }
 

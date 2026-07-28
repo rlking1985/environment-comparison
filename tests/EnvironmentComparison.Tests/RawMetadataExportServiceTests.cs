@@ -80,6 +80,37 @@ namespace EnvironmentComparison.Tests
             StringAssert.Contains(json, "\"includedAreas\": [\"Forms\"]");
         }
 
+        [TestMethod]
+        public void ExportsReportDefinitionsAndPublicationMetadataAsStructuredJson()
+        {
+            var report = new ReportMetadataInfo(
+                "report|id:12345678-aaaa-bbbb-cccc-1234567890ab",
+                "Student summary",
+                Properties(
+                    "Associated tables", "account | contact",
+                    "Raw RDL", "\r\n<Report xmlns=\"urn:report\">\r\n  <DataSets />\r\n</Report>\r\n"));
+            var snapshot = new EnvironmentMetadataSnapshot(
+                Array.Empty<TableMetadataInfo>(),
+                includedAreas: ComparisonAreas.Reports,
+                reports: new[] { report });
+            var result = new MetadataComparisonService().Compare(snapshot, snapshot);
+
+            string json;
+            int propertyCount;
+            using (var writer = new StringWriter())
+            {
+                propertyCount = new RawMetadataExportService().Write(writer, result);
+                json = writer.ToString();
+            }
+
+            Assert.AreEqual(4, propertyCount);
+            StringAssert.Contains(json, "\"includedAreas\": [\"Reports\"]");
+            StringAssert.Contains(json, "\"reports\": [");
+            StringAssert.Contains(json, "\"reports\": 1");
+            StringAssert.Contains(json, "\"Associated tables\": \"account | contact\"");
+            StringAssert.Contains(json, "<Report xmlns=\\\"urn:report\\\">");
+        }
+
         private static Dictionary<string, string> Properties(params string[] values)
         {
             var properties = new Dictionary<string, string>(StringComparer.Ordinal);

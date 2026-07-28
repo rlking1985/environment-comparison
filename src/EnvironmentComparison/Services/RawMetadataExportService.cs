@@ -17,7 +17,7 @@ namespace EnvironmentComparison.Services
             var propertyCount = 0;
             writer.WriteLine("{");
             WriteNamedString(writer, 1, "exportType", "Dataverse environment raw metadata", true);
-            WriteNamedNumber(writer, 1, "formatVersion", 2, true);
+            WriteNamedNumber(writer, 1, "formatVersion", 3, true);
             WriteNamedString(
                 writer,
                 1,
@@ -61,6 +61,8 @@ namespace EnvironmentComparison.Services
             WriteForms(writer, snapshot.Forms, indent + 1, ref propertyCount);
             writer.WriteLine(",");
             WriteViews(writer, snapshot.Views, indent + 1, ref propertyCount);
+            writer.WriteLine(",");
+            WriteReports(writer, snapshot.Reports, indent + 1, ref propertyCount);
             writer.WriteLine();
             Indent(writer, indent);
             writer.Write("}");
@@ -73,7 +75,8 @@ namespace EnvironmentComparison.Services
                 new { Area = ComparisonAreas.TableMetadata, Name = "TableMetadata" },
                 new { Area = ComparisonAreas.Columns, Name = "Columns" },
                 new { Area = ComparisonAreas.Forms, Name = "Forms" },
-                new { Area = ComparisonAreas.Views, Name = "Views" }
+                new { Area = ComparisonAreas.Views, Name = "Views" },
+                new { Area = ComparisonAreas.Reports, Name = "Reports" }
             }.Where(item => (areas & item.Area) != 0).Select(item => item.Name).ToList();
 
             Indent(writer, indent);
@@ -94,7 +97,8 @@ namespace EnvironmentComparison.Services
             WriteNamedNumber(writer, indent + 1, "tables", snapshot.Tables.Count, true);
             WriteNamedNumber(writer, indent + 1, "columns", snapshot.ColumnCount, true);
             WriteNamedNumber(writer, indent + 1, "forms", snapshot.Forms.Count, true);
-            WriteNamedNumber(writer, indent + 1, "views", snapshot.Views.Count, false);
+            WriteNamedNumber(writer, indent + 1, "views", snapshot.Views.Count, true);
+            WriteNamedNumber(writer, indent + 1, "reports", snapshot.Reports.Count, false);
             Indent(writer, indent);
             writer.Write("}");
         }
@@ -205,6 +209,33 @@ namespace EnvironmentComparison.Services
                 Indent(writer, indent + 1);
                 writer.Write("}");
                 if (index < views.Count - 1) writer.Write(",");
+                writer.WriteLine();
+            }
+
+            Indent(writer, indent);
+            writer.Write("]");
+        }
+
+        private static void WriteReports(
+            TextWriter writer,
+            IReadOnlyList<ReportMetadataInfo> reports,
+            int indent,
+            ref int propertyCount)
+        {
+            Indent(writer, indent);
+            writer.WriteLine("\"reports\": [");
+            for (var index = 0; index < reports.Count; index++)
+            {
+                var report = reports[index];
+                Indent(writer, indent + 1);
+                writer.WriteLine("{");
+                WriteNamedString(writer, indent + 2, "key", report.Key, true);
+                WriteNamedString(writer, indent + 2, "name", report.Name, true);
+                WriteProperties(writer, report.Properties, indent + 2, "properties", ref propertyCount);
+                writer.WriteLine();
+                Indent(writer, indent + 1);
+                writer.Write("}");
+                if (index < reports.Count - 1) writer.Write(",");
                 writer.WriteLine();
             }
 

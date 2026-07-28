@@ -12,11 +12,11 @@
     <readme>README.md</readme>
     <licenseUrl>https://licenses.nuget.org/MIT</licenseUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <description>Read-only comparison of Dataverse table, column, form, and system-view metadata between two environments. Highlights missing components and important definition differences while excluding managed-versus-unmanaged noise.</description>
+    <description>Read-only comparison of Dataverse tables, columns, forms, system views, and organization SSRS reports between two environments. Highlights missing components and important definition differences while excluding managed-versus-unmanaged noise.</description>
     <summary>Compare important Dataverse metadata safely between environments.</summary>
-    <releaseNotes>Form security roles are compared semantically: standard roles use stable RoleTemplateId values, other roles use ParentRootRoleId when available, and unresolved roles retain their original IDs. Raw role IDs remain available in the diagnostic export. Removes the Custom table and Custom component columns from the grid and CSV exports.</releaseNotes>
+    <releaseNotes>Adds organization SSRS report comparison and a scalable HTML export with corrected scrolling, resizable columns, complete report RDL, automatically loaded wrapped diffs, and changed-row-only inspection.</releaseNotes>
     <copyright>Copyright © 2026 Ross King</copyright>
-    <tags>XrmToolBox Plugins Dataverse Dynamics365 Metadata Tables Columns Comparison</tags>
+    <tags>XrmToolBox Plugins Dataverse Dynamics365 Metadata Tables Columns Reports SSRS Comparison</tags>
     <dependencies>
       <dependency id="XrmToolBox" version="1.2025.10.74" />
     </dependencies>

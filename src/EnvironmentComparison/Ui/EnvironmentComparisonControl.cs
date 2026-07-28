@@ -6,6 +6,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using EnvironmentComparison.Domain;
 using EnvironmentComparison.Services;
@@ -34,7 +35,9 @@ namespace EnvironmentComparison.Ui
         private readonly DataverseMetadataService _metadataService = new DataverseMetadataService();
         private readonly MetadataComparisonService _comparisonService = new MetadataComparisonService();
         private readonly CsvExportService _csvService = new CsvExportService();
+        private readonly HtmlExportService _htmlExportService = new HtmlExportService();
         private readonly RawMetadataExportService _rawMetadataExportService = new RawMetadataExportService();
+        private readonly ComparisonOutputFilterService _outputFilterService = new ComparisonOutputFilterService();
         private readonly Panel _viewport = new Panel();
         private readonly TableLayoutPanel _rootLayout = new TableLayoutPanel();
         private readonly TableLayoutPanel _environmentLayout = new TableLayoutPanel();
@@ -46,14 +49,19 @@ namespace EnvironmentComparison.Ui
         private readonly Button _environmentBButton = new Button();
         private readonly Button _compareButton = new Button();
         private readonly Button _exportButton = new Button();
+        private readonly Button _htmlExportButton = new Button();
         private readonly Button _rawExportButton = new Button();
         private readonly Button _clearFiltersButton = new Button();
         private readonly CheckBox _tablesCheckBox = new CheckBox();
         private readonly CheckBox _columnsCheckBox = new CheckBox();
         private readonly CheckBox _formsCheckBox = new CheckBox();
         private readonly CheckBox _viewsCheckBox = new CheckBox();
+        private readonly CheckBox _reportsCheckBox = new CheckBox();
         private readonly CheckBox _unpublishedCheckBox = new CheckBox();
         private readonly TextBox _searchBox = new TextBox();
+        private readonly Label _tableLogicalNameRegexLabel = new Label();
+        private readonly TextBox _tableLogicalNameRegexBox = new TextBox();
+        private readonly Label _tableLogicalNameRegexErrorLabel = new Label();
         private readonly ComboBox _scopeFilter = new ComboBox();
         private readonly ComboBox _severityFilter = new ComboBox();
         private readonly ComboBox _differenceFilter = new ComboBox();
@@ -69,9 +77,15 @@ namespace EnvironmentComparison.Ui
         private bool _resumeComparisonAfterConnectionSelection;
         private bool _busy;
         private bool _compactLayout;
+        private Regex? _tableLogicalNameRegex;
 
         private const int CompactThreshold = 760;
         private const int MinimumContentWidth = 350;
+        private const int RegexMatchTimeoutMilliseconds = 100;
+        private const ComparisonAreas TableAssociatedAreas = ComparisonAreas.TableMetadata
+            | ComparisonAreas.Columns
+            | ComparisonAreas.Forms
+            | ComparisonAreas.Views;
 
         public EnvironmentComparisonControl()
         {
@@ -130,7 +144,7 @@ namespace EnvironmentComparison.Ui
             var version = GetType().Assembly.GetName().Version?.ToString() ?? "unknown";
             MessageBox.Show(
                 this,
-                $"Environment Comparison {version}\r\n\r\nRead-only comparison of Dataverse table metadata, columns, forms, and system views. Managed/unmanaged status is intentionally ignored.",
+                $"Environment Comparison {version}\r\n\r\nRead-only comparison of Dataverse table metadata, columns, forms, system views, and organization SSRS reports. Managed/unmanaged status is intentionally ignored.",
                 "About Environment Comparison",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
@@ -294,7 +308,12 @@ namespace EnvironmentComparison.Ui
             ConfigureAreaCheckBox(_columnsCheckBox, "Columns", true, "Column metadata, types, requirements, security, formats, choices, and other important settings.");
             ConfigureAreaCheckBox(_formsCheckBox, "Forms", true, "System form definitions and important form settings.");
             ConfigureAreaCheckBox(_viewsCheckBox, "System views", true, "System view FetchXML, layout, columns, and important view settings. Personal views are excluded.");
-            areas.Controls.AddRange(new Control[] { _tablesCheckBox, _columnsCheckBox, _formsCheckBox, _viewsCheckBox });
+            ConfigureAreaCheckBox(_reportsCheckBox, "SSRS reports", true, "Organization Reporting Services reports, normalized RDL, filters, related tables, categories, and visibility. Personal reports are excluded.");
+            foreach (var checkBox in new[] { _tablesCheckBox, _columnsCheckBox, _formsCheckBox, _viewsCheckBox, _reportsCheckBox })
+            {
+                checkBox.CheckedChanged += (_, __) => ComparisonAreasChanged();
+            }
+            areas.Controls.AddRange(new Control[] { _tablesCheckBox, _columnsCheckBox, _formsCheckBox, _viewsCheckBox, _reportsCheckBox });
             layout.Controls.Add(areas, 0, 1);
 
             var actions = new FlowLayoutPanel
@@ -311,6 +330,11 @@ namespace EnvironmentComparison.Ui
             StyleSecondaryButton(_exportButton);
             _exportButton.Enabled = false;
             _exportButton.Click += (_, __) => ExportCsv();
+            _htmlExportButton.Text = "Export filterable HTML";
+            StyleSecondaryButton(_htmlExportButton);
+            _htmlExportButton.Enabled = false;
+            _htmlExportButton.Click += (_, __) => ExportHtml();
+            _toolTip.SetToolTip(_htmlExportButton, "Browser report containing every difference, with scalable filtering, resizable columns, complete changed values, report RDL, and an automatically loaded CDN diff viewer.");
             _rawExportButton.Text = "Export raw metadata (JSON)";
             StyleSecondaryButton(_rawExportButton);
             _rawExportButton.Enabled = false;
@@ -320,7 +344,7 @@ namespace EnvironmentComparison.Ui
             _unpublishedCheckBox.Text = "Include unpublished metadata";
             _unpublishedCheckBox.Margin = new Padding(14, 8, 8, 4);
             _toolTip.SetToolTip(_unpublishedCheckBox, "Off compares published definitions, which best represents deployed state. Turn on only when draft customizations must be included.");
-            actions.Controls.AddRange(new Control[] { _compareButton, _exportButton, _rawExportButton, _unpublishedCheckBox });
+            actions.Controls.AddRange(new Control[] { _compareButton, _exportButton, _htmlExportButton, _rawExportButton, _unpublishedCheckBox });
             layout.Controls.Add(actions, 0, 2);
             return card;
         }
@@ -352,14 +376,16 @@ namespace EnvironmentComparison.Ui
             _searchBox.AccessibleName = "Search comparison issues";
             _searchBox.TextChanged += (_, __) => PopulateGrid();
             _toolTip.SetToolTip(_searchBox, "Search table, component, property, values, and details.");
-            ConfigureFilter(_scopeFilter, new[] { "All areas", "Tables", "Columns", "Forms", "Views" });
+            var tableRegexFilter = CreateTableLogicalNameRegexFilter();
+            ConfigureFilter(_scopeFilter, new[] { "All areas", "Tables", "Columns", "Forms", "Views", "Reports" });
             ConfigureFilter(_severityFilter, new[] { "All severities", "Critical and high", "Critical only" });
             ConfigureFilter(_differenceFilter, new[] { "All differences", "Missing in Environment B", "Missing in Environment A", "Changed" });
             _clearFiltersButton.Text = "Clear filters";
             StyleSecondaryButton(_clearFiltersButton);
             _clearFiltersButton.Click += (_, __) => ClearFilters();
-            filters.Controls.AddRange(new Control[] { _searchBox, _scopeFilter, _severityFilter, _differenceFilter, _clearFiltersButton });
+            filters.Controls.AddRange(new Control[] { _searchBox, tableRegexFilter, _scopeFilter, _severityFilter, _differenceFilter, _clearFiltersButton });
             layout.Controls.Add(filters, 0, 1);
+            UpdateTableLogicalNameRegexAvailability();
 
             _resultCountLabel.AutoSize = true;
             _resultCountLabel.ForeColor = MutedTextColor;
@@ -410,7 +436,7 @@ namespace EnvironmentComparison.Ui
             AddGridColumn("Difference", "Difference", 145);
             AddGridColumn("Table", "Table", 165);
             AddGridColumn("Classification", "Table classification", 105);
-            AddGridColumn("Component", "Column / form / view", 205);
+            AddGridColumn("Component", "Column / form / view / report", 205);
             AddGridColumn("Property", "Property", 165);
             AddGridColumn("A", "Environment A", 190);
             AddGridColumn("B", "Environment B", 190);
@@ -521,6 +547,7 @@ namespace EnvironmentComparison.Ui
             _summaryLabel.Text = $"Compared {DisplayAreas(_result.EnvironmentA.IncludedAreas)} using {mode} definitions. No changes were made.";
             _activity.Items.Insert(0, $"{DateTime.Now:T} Comparison completed with {_result.Issues.Count:N0} differences. No changes were made.");
             _exportButton.Enabled = _grid.Rows.Count > 0;
+            _htmlExportButton.Enabled = _result.Issues.Count > 0;
             _rawExportButton.Enabled = true;
         }
 
@@ -534,12 +561,14 @@ namespace EnvironmentComparison.Ui
                 {
                     _resultCountLabel.Text = "No comparison loaded.";
                     _exportButton.Enabled = false;
+                    _htmlExportButton.Enabled = false;
                     _rawExportButton.Enabled = false;
                     UpdateDetails();
                     return;
                 }
 
-                var filtered = _result.Issues.Where(MatchesFilters).ToList();
+                var regexValid = TryFilterIssuesByTableLogicalName(_result.Issues, out var regexScopedIssues);
+                var filtered = regexScopedIssues.Where(MatchesFilters).ToList();
                 foreach (var issue in filtered)
                 {
                     var rowIndex = _grid.Rows.Add(
@@ -561,9 +590,10 @@ namespace EnvironmentComparison.Ui
                 var missingB = filtered.Count(issue => issue.Kind == DifferenceKind.MissingInEnvironmentB);
                 var missingA = filtered.Count(issue => issue.Kind == DifferenceKind.MissingInEnvironmentA);
                 var changed = filtered.Count(issue => issue.Kind == DifferenceKind.Changed);
-                _resultCountLabel.Text = $"Showing {filtered.Count:N0} of {_result.Issues.Count:N0} differences  •  Missing in B: {missingB:N0}  •  Missing in A: {missingA:N0}  •  Changed: {changed:N0}";
-                _exportButton.Enabled = !_busy && filtered.Count > 0;
-                _rawExportButton.Enabled = !_busy;
+                _resultCountLabel.Text = $"Showing {filtered.Count:N0} of {regexScopedIssues.Count:N0} differences  •  Missing in B: {missingB:N0}  •  Missing in A: {missingA:N0}  •  Changed: {changed:N0}";
+                _exportButton.Enabled = !_busy && regexValid && filtered.Count > 0;
+                _htmlExportButton.Enabled = !_busy && regexValid && regexScopedIssues.Count > 0;
+                _rawExportButton.Enabled = !_busy && regexValid;
                 if (_grid.Rows.Count > 0)
                 {
                     _grid.Rows[0].Selected = true;
@@ -670,14 +700,77 @@ namespace EnvironmentComparison.Ui
             }
         }
 
+        private void ExportHtml()
+        {
+            var unfilteredResult = _result;
+            if (unfilteredResult == null || unfilteredResult.Issues.Count == 0)
+            {
+                MessageBox.Show(this, "Run a comparison with at least one difference before exporting HTML.", "Nothing to export", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (!TryFilterResultByTableLogicalName(unfilteredResult, out var result)) return;
+            if (result.Issues.Count == 0)
+            {
+                MessageBox.Show(this, "No differences match the table logical-name regular expression.", "Nothing to export", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            using (var dialog = new SaveFileDialog
+            {
+                AddExtension = true,
+                DefaultExt = "html",
+                Filter = "HTML files (*.html)|*.html|All files (*.*)|*.*",
+                FileName = $"Dataverse-environment-comparison-{DateTime.Now:yyyyMMdd-HHmmss}.html",
+                OverwritePrompt = true,
+                Title = "Export complete filterable comparison"
+            })
+            {
+                if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                var fileName = dialog.FileName;
+                SetBusy(true);
+                _activity.Items.Insert(0, $"{DateTime.Now:T} Exporting complete filterable HTML comparison...");
+                WorkAsync(new WorkAsyncInfo(
+                    "Creating the filterable HTML report...",
+                    (_, eventArgs) =>
+                    {
+                        using (var writer = new StreamWriter(fileName, false, new UTF8Encoding(false)))
+                        {
+                            eventArgs.Result = _htmlExportService.Write(writer, result);
+                        }
+                    })
+                {
+                    PostWorkCallBack = eventArgs => HtmlExportCompleted(eventArgs, fileName)
+                });
+            }
+        }
+
+        private void HtmlExportCompleted(RunWorkerCompletedEventArgs eventArgs, string fileName)
+        {
+            SetBusy(false);
+            if (eventArgs.Error != null)
+            {
+                LogError(eventArgs.Error.ToString());
+                _activity.Items.Insert(0, $"{DateTime.Now:T} HTML export failed: {eventArgs.Error.Message}");
+                MessageBox.Show(this, $"The HTML export failed.\r\n\r\n{eventArgs.Error.Message}", "Export failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            var issueCount = (int)eventArgs.Result;
+            _activity.Items.Insert(0, $"{DateTime.Now:T} Exported {issueCount:N0} differences to the filterable HTML report at {fileName}.");
+            MessageBox.Show(this, $"Exported {issueCount:N0} differences as a filterable HTML report. Its enhanced diff viewer loads automatically when internet access is available; the base report works without it.", "HTML exported", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
         private void ExportRawMetadata()
         {
-            var result = _result;
-            if (result == null)
+            var unfilteredResult = _result;
+            if (unfilteredResult == null)
             {
                 MessageBox.Show(this, "Run a comparison before exporting raw metadata.", "Nothing to export", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
+
+            if (!TryFilterResultByTableLogicalName(unfilteredResult, out var result)) return;
 
             using (var dialog = new SaveFileDialog
             {
@@ -733,6 +826,7 @@ namespace EnvironmentComparison.Ui
                 if (_columnsCheckBox.Checked) areas |= ComparisonAreas.Columns;
                 if (_formsCheckBox.Checked) areas |= ComparisonAreas.Forms;
                 if (_viewsCheckBox.Checked) areas |= ComparisonAreas.Views;
+                if (_reportsCheckBox.Checked) areas |= ComparisonAreas.Reports;
                 return areas;
             }
         }
@@ -784,12 +878,14 @@ namespace EnvironmentComparison.Ui
             _summaryLabel.Text = message;
             _resultCountLabel.Text = "No comparison loaded.";
             _exportButton.Enabled = false;
+            _htmlExportButton.Enabled = false;
             _rawExportButton.Enabled = false;
         }
 
         private void ClearFilters()
         {
             _searchBox.Clear();
+            _tableLogicalNameRegexBox.Clear();
             _scopeFilter.SelectedIndex = 0;
             _severityFilter.SelectedIndex = 0;
             _differenceFilter.SelectedIndex = 0;
@@ -806,11 +902,164 @@ namespace EnvironmentComparison.Ui
             _columnsCheckBox.Enabled = !busy;
             _formsCheckBox.Enabled = !busy;
             _viewsCheckBox.Enabled = !busy;
+            _reportsCheckBox.Enabled = !busy;
             _unpublishedCheckBox.Enabled = !busy;
-            _exportButton.Enabled = !busy && _grid.Rows.Count > 0;
-            _rawExportButton.Enabled = !busy && _result != null;
+            UpdateTableLogicalNameRegexAvailability();
+            var regexValid = !TableLogicalNameRegexHasError;
+            _exportButton.Enabled = !busy && regexValid && _grid.Rows.Count > 0;
+            _htmlExportButton.Enabled = !busy && regexValid && _result != null && _result.Issues.Count > 0;
+            _rawExportButton.Enabled = !busy && regexValid && _result != null;
             UseWaitCursor = busy;
         }
+
+        private Control CreateTableLogicalNameRegexFilter()
+        {
+            var panel = new TableLayoutPanel
+            {
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                ColumnCount = 1,
+                RowCount = 3,
+                Margin = new Padding(0, 0, 8, 0)
+            };
+            _tableLogicalNameRegexLabel.AutoSize = true;
+            _tableLogicalNameRegexLabel.Text = "Table logical name regex";
+            _tableLogicalNameRegexLabel.ForeColor = MutedTextColor;
+            _tableLogicalNameRegexLabel.Margin = new Padding(0, 0, 0, 2);
+            _tableLogicalNameRegexBox.Width = 220;
+            _tableLogicalNameRegexBox.Margin = new Padding(0);
+            _tableLogicalNameRegexBox.AccessibleName = "Table logical name regular expression";
+            _tableLogicalNameRegexBox.TextChanged += (_, __) => TableLogicalNameRegexChanged();
+            _toolTip.SetToolTip(
+                _tableLogicalNameRegexBox,
+                "Filters table-associated preview and exports after retrieval. Example: ^(ata_|mshied_). Reports and other organization-level rows are retained.");
+            _tableLogicalNameRegexErrorLabel.AutoSize = true;
+            _tableLogicalNameRegexErrorLabel.ForeColor = CriticalColor;
+            _tableLogicalNameRegexErrorLabel.Margin = new Padding(0, 2, 0, 0);
+            panel.Controls.Add(_tableLogicalNameRegexLabel, 0, 0);
+            panel.Controls.Add(_tableLogicalNameRegexBox, 0, 1);
+            panel.Controls.Add(_tableLogicalNameRegexErrorLabel, 0, 2);
+            return panel;
+        }
+
+        private void ComparisonAreasChanged()
+        {
+            UpdateTableLogicalNameRegexAvailability();
+            PopulateGrid();
+        }
+
+        private void TableLogicalNameRegexChanged()
+        {
+            CompileTableLogicalNameRegex();
+            PopulateGrid();
+        }
+
+        private void UpdateTableLogicalNameRegexAvailability()
+        {
+            var appliesToSelectedAreas = TableLogicalNameRegexAppliesToSelectedAreas;
+            _tableLogicalNameRegexLabel.Enabled = appliesToSelectedAreas;
+            _tableLogicalNameRegexBox.Enabled = !_busy && appliesToSelectedAreas;
+            CompileTableLogicalNameRegex();
+        }
+
+        private void CompileTableLogicalNameRegex()
+        {
+            _tableLogicalNameRegex = null;
+            SetTableLogicalNameRegexError(string.Empty);
+            var pattern = _tableLogicalNameRegexBox.Text.Trim();
+            if (!TableLogicalNameRegexAppliesToSelectedAreas || pattern.Length == 0) return;
+
+            try
+            {
+                _tableLogicalNameRegex = new Regex(
+                    pattern,
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+                    TimeSpan.FromMilliseconds(RegexMatchTimeoutMilliseconds));
+            }
+            catch (ArgumentException)
+            {
+                SetTableLogicalNameRegexError("Invalid regular expression.");
+            }
+        }
+
+        private bool TryFilterIssuesByTableLogicalName(
+            IEnumerable<ComparisonIssue> issues,
+            out IReadOnlyList<ComparisonIssue> filteredIssues)
+        {
+            if (!TryGetActiveTableLogicalNameRegex(out var regex))
+            {
+                filteredIssues = issues.ToList();
+                return false;
+            }
+
+            if (regex == null)
+            {
+                filteredIssues = issues.ToList();
+                return true;
+            }
+
+            try
+            {
+                filteredIssues = _outputFilterService.FilterIssuesByTableLogicalName(issues, regex);
+                return true;
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                SetTableLogicalNameRegexError("Regular expression took too long.");
+                filteredIssues = issues.ToList();
+                return false;
+            }
+        }
+
+        private bool TryFilterResultByTableLogicalName(
+            MetadataComparisonResult result,
+            out MetadataComparisonResult filteredResult)
+        {
+            if (!TryGetActiveTableLogicalNameRegex(out var regex))
+            {
+                MessageBox.Show(this, _tableLogicalNameRegexErrorLabel.Text, "Invalid table filter", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                filteredResult = result;
+                return false;
+            }
+
+            if (regex == null)
+            {
+                filteredResult = result;
+                return true;
+            }
+
+            try
+            {
+                filteredResult = _outputFilterService.FilterByTableLogicalName(result, regex);
+                return true;
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                SetTableLogicalNameRegexError("Regular expression took too long.");
+                MessageBox.Show(this, _tableLogicalNameRegexErrorLabel.Text, "Invalid table filter", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                filteredResult = result;
+                return false;
+            }
+        }
+
+        private bool TryGetActiveTableLogicalNameRegex(out Regex? regex)
+        {
+            regex = null;
+            if (!TableLogicalNameRegexAppliesToSelectedAreas || _tableLogicalNameRegexBox.Text.Trim().Length == 0) return true;
+            if (_tableLogicalNameRegex == null || TableLogicalNameRegexHasError) return false;
+            regex = _tableLogicalNameRegex;
+            return true;
+        }
+
+        private void SetTableLogicalNameRegexError(string message)
+        {
+            _tableLogicalNameRegexErrorLabel.Text = message;
+            _tableLogicalNameRegexErrorLabel.Visible = message.Length > 0;
+        }
+
+        private bool TableLogicalNameRegexAppliesToSelectedAreas => (SelectedAreas & TableAssociatedAreas) != 0;
+
+        private bool TableLogicalNameRegexHasError => _tableLogicalNameRegexErrorLabel.Text.Length > 0;
 
         private void ApplyResponsiveLayout()
         {
@@ -1045,6 +1294,7 @@ namespace EnvironmentComparison.Ui
             if ((areas & ComparisonAreas.Columns) != 0) labels.Add("columns");
             if ((areas & ComparisonAreas.Forms) != 0) labels.Add("forms");
             if ((areas & ComparisonAreas.Views) != 0) labels.Add("system views");
+            if ((areas & ComparisonAreas.Reports) != 0) labels.Add("SSRS reports");
             return string.Join(", ", labels);
         }
 

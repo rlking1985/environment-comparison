@@ -176,6 +176,157 @@ namespace EnvironmentComparison.Tests
         }
 
         [TestMethod]
+        public void ComparesSsrsReportRdlAndPublicationMetadata()
+        {
+            var reportA = new ReportMetadataInfo(
+                "report|id:12345678-aaaa-bbbb-cccc-1234567890ab",
+                "Student summary",
+                Properties(
+                    "Name", "Student summary",
+                    "Associated tables", "account | contact",
+                    "Categories", "4",
+                    "Visibility", "1 | 2",
+                    "RDL", DataverseMetadataService.NormalizeDefinition(
+                        "<Report xmlns='urn:report'><DataSets><DataSet Name='Students' /></DataSets></Report>")));
+            var reportB = new ReportMetadataInfo(
+                reportA.Key,
+                "Student summary",
+                Properties(
+                    "Name", "Student summary",
+                    "Associated tables", "account",
+                    "Categories", "4",
+                    "Visibility", "1 | 2",
+                    "RDL", DataverseMetadataService.NormalizeDefinition(
+                        "<Report xmlns='urn:report'><DataSets><DataSet Name='Enrolments' /></DataSets></Report>")));
+
+            var result = _service.Compare(
+                new EnvironmentMetadataSnapshot(
+                    Array.Empty<TableMetadataInfo>(),
+                    includedAreas: ComparisonAreas.Reports,
+                    reports: new[] { reportA }),
+                new EnvironmentMetadataSnapshot(
+                    Array.Empty<TableMetadataInfo>(),
+                    includedAreas: ComparisonAreas.Reports,
+                    reports: new[] { reportB }));
+
+            var rdl = result.Issues.Single(issue => issue.PropertyName == "RDL");
+            var tables = result.Issues.Single(issue => issue.PropertyName == "Associated tables");
+            Assert.AreEqual(ComparisonScope.Report, rdl.Scope);
+            Assert.AreEqual(DifferenceSeverity.Critical, rdl.Severity);
+            StringAssert.StartsWith(rdl.EnvironmentAPreviewValue, "SHA-256 ");
+            Assert.AreEqual(DifferenceSeverity.Critical, tables.Severity);
+            Assert.AreEqual("account | contact", tables.EnvironmentAValue);
+            Assert.AreEqual("account", tables.EnvironmentBValue);
+        }
+
+        [TestMethod]
+        public void IgnoresFormattingOnlySsrsRdlDifferences()
+        {
+            var reportA = new ReportMetadataInfo(
+                "report|id:12345678-aaaa-bbbb-cccc-1234567890ab",
+                "Student summary",
+                Properties(
+                    "Name", "Student summary",
+                    "RDL", DataverseMetadataService.NormalizeDefinition(
+                        "<Report xmlns='urn:report'><DataSets><DataSet Name='Students' /></DataSets></Report>")));
+            var reportB = new ReportMetadataInfo(
+                reportA.Key,
+                "Student summary",
+                Properties(
+                    "Name", "Student summary",
+                    "RDL", DataverseMetadataService.NormalizeDefinition(
+                        "<Report xmlns='urn:report'>\r\n  <DataSets>\r\n    <DataSet Name='Students'></DataSet>\r\n  </DataSets>\r\n</Report>")));
+
+            var result = _service.Compare(
+                new EnvironmentMetadataSnapshot(
+                    Array.Empty<TableMetadataInfo>(),
+                    includedAreas: ComparisonAreas.Reports,
+                    reports: new[] { reportA }),
+                new EnvironmentMetadataSnapshot(
+                    Array.Empty<TableMetadataInfo>(),
+                    includedAreas: ComparisonAreas.Reports,
+                    reports: new[] { reportB }));
+
+            Assert.IsFalse(result.Issues.Any());
+        }
+
+        [TestMethod]
+        public void FallbackMatchesUniqueReportsWithDifferentIdsAndExplainsEveryDifference()
+        {
+            var reportA = Report(
+                "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                "Account Summary",
+                "Account Summary.rdl",
+                "Description", "Environment A description");
+            var reportB = Report(
+                "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+                "Account Summary",
+                "Account Summary.rdl",
+                "Description", "Environment B description");
+
+            var result = _service.Compare(
+                new EnvironmentMetadataSnapshot(Array.Empty<TableMetadataInfo>(), includedAreas: ComparisonAreas.Reports, reports: new[] { reportA }),
+                new EnvironmentMetadataSnapshot(Array.Empty<TableMetadataInfo>(), includedAreas: ComparisonAreas.Reports, reports: new[] { reportB }));
+
+            Assert.IsFalse(result.Issues.Any(issue => issue.Kind != DifferenceKind.Changed));
+            CollectionAssert.AreEquivalent(
+                new[] { "Description", "Report ID" },
+                result.Issues.Select(issue => issue.PropertyName).ToArray());
+            Assert.IsTrue(result.Issues.All(issue => issue.ComponentKey == reportA.Key));
+            Assert.IsTrue(result.Issues.All(issue => issue.EnvironmentAComponentKey == reportA.Key));
+            Assert.IsTrue(result.Issues.All(issue => issue.EnvironmentBComponentKey == reportB.Key));
+            Assert.IsTrue(result.Issues.All(issue => issue.Details.Contains("Fallback matched by report name, filename, report type and language")));
+            Assert.IsTrue(result.Issues.All(issue => issue.Details.Contains("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")));
+            Assert.IsTrue(result.Issues.All(issue => issue.Details.Contains("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")));
+        }
+
+        [TestMethod]
+        public void MatchesExactReportIdBeforeConsideringDuplicateFallbackIdentity()
+        {
+            var current = Report(
+                "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                "Student Medical Summary Report Base",
+                "Student Medical Summary Report Base.rdl");
+            var legacy = Report(
+                "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+                "Student Medical Summary Report Base",
+                "Student Medical Summary Report Base.rdl");
+
+            var result = _service.Compare(
+                new EnvironmentMetadataSnapshot(Array.Empty<TableMetadataInfo>(), includedAreas: ComparisonAreas.Reports, reports: new[] { current, legacy }),
+                new EnvironmentMetadataSnapshot(Array.Empty<TableMetadataInfo>(), includedAreas: ComparisonAreas.Reports, reports: new[] { current }));
+
+            var issue = result.Issues.Single();
+            Assert.AreEqual(DifferenceKind.MissingInEnvironmentB, issue.Kind);
+            Assert.AreEqual(legacy.Key, issue.ComponentKey);
+            Assert.IsFalse(issue.Details.Contains("Fallback matched"));
+        }
+
+        [TestMethod]
+        public void DoesNotFallbackMatchAmbiguousDuplicateReports()
+        {
+            var reportsA = new[]
+            {
+                Report("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "Duplicate", "Duplicate.rdl"),
+                Report("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "Duplicate", "Duplicate.rdl")
+            };
+            var reportsB = new[]
+            {
+                Report("cccccccc-cccc-cccc-cccc-cccccccccccc", "Duplicate", "Duplicate.rdl"),
+                Report("dddddddd-dddd-dddd-dddd-dddddddddddd", "Duplicate", "Duplicate.rdl")
+            };
+
+            var result = _service.Compare(
+                new EnvironmentMetadataSnapshot(Array.Empty<TableMetadataInfo>(), includedAreas: ComparisonAreas.Reports, reports: reportsA),
+                new EnvironmentMetadataSnapshot(Array.Empty<TableMetadataInfo>(), includedAreas: ComparisonAreas.Reports, reports: reportsB));
+
+            Assert.AreEqual(4, result.Issues.Count);
+            Assert.IsTrue(result.Issues.All(issue => issue.PropertyName == "Report presence"));
+            Assert.IsTrue(result.Issues.All(issue => issue.Details.Contains("fallback match was not used")));
+            Assert.IsTrue(result.Issues.All(issue => issue.Details.Contains("2 candidate(s)")));
+        }
+
+        [TestMethod]
         public void WhitespaceOnlyFormulaDefinitionsAreIgnored()
         {
             var formulaA = DataverseMetadataService.NormalizeDefinition(
@@ -259,6 +410,27 @@ namespace EnvironmentComparison.Tests
                 properties[additionalProperties[index]] = additionalProperties[index + 1];
             }
             return new ColumnMetadataInfo(logicalName, properties);
+        }
+
+        private static ReportMetadataInfo Report(
+            string id,
+            string name,
+            string fileName,
+            params string[] additionalProperties)
+        {
+            var properties = Properties(
+                "Report ID", id,
+                "Name", name,
+                "File name", fileName,
+                "Report type", "1",
+                "Language code", "1033",
+                "RDL", "<Report />");
+            for (var index = 0; index < additionalProperties.Length; index += 2)
+            {
+                properties[additionalProperties[index]] = additionalProperties[index + 1];
+            }
+
+            return new ReportMetadataInfo("report|id:" + id, name, properties);
         }
 
         private static Dictionary<string, string> Properties(params string[] values)

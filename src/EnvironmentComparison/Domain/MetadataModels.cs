@@ -13,7 +13,8 @@ namespace EnvironmentComparison.Domain
         Columns = 2,
         Forms = 4,
         Views = 8,
-        All = TableMetadata | Columns | Forms | Views
+        Reports = 16,
+        All = TableMetadata | Columns | Forms | Views | Reports
     }
 
     public sealed class EnvironmentMetadataSnapshot
@@ -23,7 +24,8 @@ namespace EnvironmentComparison.Domain
             IEnumerable<FormMetadataInfo>? forms = null,
             IEnumerable<ViewMetadataInfo>? views = null,
             ComparisonAreas includedAreas = ComparisonAreas.TableMetadata | ComparisonAreas.Columns,
-            bool includesUnpublishedMetadata = false)
+            bool includesUnpublishedMetadata = false,
+            IEnumerable<ReportMetadataInfo>? reports = null)
         {
             if (tables == null) throw new ArgumentNullException(nameof(tables));
             Tables = new ReadOnlyCollection<TableMetadataInfo>(tables.OrderBy(table => table.LogicalName, StringComparer.OrdinalIgnoreCase).ToList());
@@ -31,6 +33,8 @@ namespace EnvironmentComparison.Domain
                 (forms ?? Enumerable.Empty<FormMetadataInfo>()).OrderBy(form => form.Key, StringComparer.OrdinalIgnoreCase).ToList());
             Views = new ReadOnlyCollection<ViewMetadataInfo>(
                 (views ?? Enumerable.Empty<ViewMetadataInfo>()).OrderBy(view => view.Key, StringComparer.OrdinalIgnoreCase).ToList());
+            Reports = new ReadOnlyCollection<ReportMetadataInfo>(
+                (reports ?? Enumerable.Empty<ReportMetadataInfo>()).OrderBy(report => report.Key, StringComparer.OrdinalIgnoreCase).ToList());
             IncludedAreas = includedAreas;
             IncludesUnpublishedMetadata = includesUnpublishedMetadata;
         }
@@ -40,6 +44,8 @@ namespace EnvironmentComparison.Domain
         public IReadOnlyList<FormMetadataInfo> Forms { get; }
 
         public IReadOnlyList<ViewMetadataInfo> Views { get; }
+
+        public IReadOnlyList<ReportMetadataInfo> Reports { get; }
 
         public ComparisonAreas IncludedAreas { get; }
 
@@ -84,6 +90,25 @@ namespace EnvironmentComparison.Domain
         public string Key { get; }
 
         public string TableLogicalName { get; }
+
+        public string Name { get; }
+
+        public IReadOnlyDictionary<string, string> Properties { get; }
+
+        public string GetProperty(string name) => Properties.TryGetValue(name, out var value) ? value : string.Empty;
+    }
+
+    public sealed class ReportMetadataInfo
+    {
+        public ReportMetadataInfo(string key, string name, IDictionary<string, string> properties)
+        {
+            Key = key ?? throw new ArgumentNullException(nameof(key));
+            Name = name ?? string.Empty;
+            Properties = new ReadOnlyDictionary<string, string>(
+                new Dictionary<string, string>(properties ?? throw new ArgumentNullException(nameof(properties)), StringComparer.Ordinal));
+        }
+
+        public string Key { get; }
 
         public string Name { get; }
 
@@ -144,7 +169,8 @@ namespace EnvironmentComparison.Domain
         Table,
         Column,
         Form,
-        View
+        View,
+        Report
     }
 
     public enum DifferenceKind
@@ -178,7 +204,9 @@ namespace EnvironmentComparison.Domain
             string details,
             string tableClassification = "",
             string? environmentAPreviewValue = null,
-            string? environmentBPreviewValue = null)
+            string? environmentBPreviewValue = null,
+            string? environmentAComponentKey = null,
+            string? environmentBComponentKey = null)
         {
             Severity = severity;
             Scope = scope;
@@ -193,6 +221,8 @@ namespace EnvironmentComparison.Domain
             EnvironmentBValue = environmentBValue ?? string.Empty;
             EnvironmentAPreviewValue = environmentAPreviewValue ?? EnvironmentAValue;
             EnvironmentBPreviewValue = environmentBPreviewValue ?? EnvironmentBValue;
+            EnvironmentAComponentKey = environmentAComponentKey ?? ComponentKey;
+            EnvironmentBComponentKey = environmentBComponentKey ?? ComponentKey;
             Details = details ?? string.Empty;
         }
 
@@ -221,6 +251,10 @@ namespace EnvironmentComparison.Domain
         public string EnvironmentAPreviewValue { get; }
 
         public string EnvironmentBPreviewValue { get; }
+
+        public string EnvironmentAComponentKey { get; }
+
+        public string EnvironmentBComponentKey { get; }
 
         public string Details { get; }
     }

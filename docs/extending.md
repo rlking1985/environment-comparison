@@ -13,6 +13,6 @@ To add a comparison area:
 7. Add synthetic tests for missing, changed, identical, and unselected behavior.
 8. Update the safety documentation if the retrieval surface changes.
 
-Do not add managed state, solution IDs, metadata IDs, timestamps, or version stamps to the default comparison. Those values are usually deployment noise rather than functional differences.
+Do not add managed state, solution IDs, metadata IDs, timestamps, or version stamps to the default comparison. Those values are usually deployment noise rather than functional differences. The deliberate exception is the SSRS Report ID emitted when a unique fallback report match is required, because matching IDs can be important for managed-solution deployment validation.
 
 Any future write capability should be built as a separate tool. This plugin's contract is read-only comparison.

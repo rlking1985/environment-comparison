@@ -18,6 +18,10 @@ namespace EnvironmentComparison.Services
 {
     public sealed class DataverseMetadataService
     {
+        private const int PublishedPageSize = 5000;
+        private const int UnpublishedDefinitionPageSize = 250;
+        private const int ReportDefinitionPageSize = 25;
+
         private static readonly KeyValuePair<string, string>[] TableProperties =
         {
             Property("Schema name", "SchemaName"),
@@ -121,18 +125,43 @@ namespace EnvironmentComparison.Services
             if ((areas & ComparisonAreas.Forms) != 0)
             {
                 reportProgress?.Invoke(60, "Loading system forms...");
-                forms.AddRange(LoadForms(service, tableNamesByObjectType, retrieveAsIfPublished));
+                forms.AddRange(LoadForms(
+                    service,
+                    tableNamesByObjectType,
+                    retrieveAsIfPublished,
+                    page => reportProgress?.Invoke(
+                        60,
+                        $"Loading {(retrieveAsIfPublished ? "unpublished " : string.Empty)}system forms page {page:N0}...")));
             }
 
             var views = new List<ViewMetadataInfo>();
             if ((areas & ComparisonAreas.Views) != 0)
             {
                 reportProgress?.Invoke(80, "Loading system views...");
-                views.AddRange(LoadViews(service, tableNamesByObjectType, retrieveAsIfPublished));
+                views.AddRange(LoadViews(
+                    service,
+                    tableNamesByObjectType,
+                    retrieveAsIfPublished,
+                    page => reportProgress?.Invoke(
+                        80,
+                        $"Loading {(retrieveAsIfPublished ? "unpublished " : string.Empty)}system views page {page:N0}...")));
+            }
+
+            var reports = new List<ReportMetadataInfo>();
+            if ((areas & ComparisonAreas.Reports) != 0)
+            {
+                reportProgress?.Invoke(90, "Loading SSRS reports...");
+                reports.AddRange(LoadReports(
+                    service,
+                    tableNamesByObjectType,
+                    retrieveAsIfPublished,
+                    page => reportProgress?.Invoke(
+                        90,
+                        $"Loading {(retrieveAsIfPublished ? "unpublished " : string.Empty)}SSRS report definitions page {page:N0}...")));
             }
 
             reportProgress?.Invoke(100, "Metadata snapshot loaded.");
-            return new EnvironmentMetadataSnapshot(tables, forms, views, areas, retrieveAsIfPublished);
+            return new EnvironmentMetadataSnapshot(tables, forms, views, areas, retrieveAsIfPublished, reports);
         }
 
         private static TableMetadataInfo ToTable(EntityMetadata metadata, bool includeColumns)
@@ -165,7 +194,8 @@ namespace EnvironmentComparison.Services
         private static IEnumerable<FormMetadataInfo> LoadForms(
             IOrganizationService service,
             IReadOnlyDictionary<int, string> tableNamesByObjectType,
-            bool includeUnpublished)
+            bool includeUnpublished,
+            Action<int>? pageLoaded)
         {
             var query = new QueryExpression("systemform")
             {
@@ -189,7 +219,7 @@ namespace EnvironmentComparison.Services
                     "ancestorformid")
             };
 
-            var entities = RetrieveAll(service, query, includeUnpublished);
+            var entities = RetrieveAll(service, query, includeUnpublished, pageLoaded);
             var roleIds = entities
                 .SelectMany(entity => FormRoleIds(EntityRawValue(entity, "formxml")))
                 .Distinct()
@@ -318,7 +348,8 @@ namespace EnvironmentComparison.Services
         private static IEnumerable<ViewMetadataInfo> LoadViews(
             IOrganizationService service,
             IReadOnlyDictionary<int, string> tableNamesByObjectType,
-            bool includeUnpublished)
+            bool includeUnpublished,
+            Action<int>? pageLoaded)
         {
             var query = new QueryExpression("savedquery")
             {
@@ -335,7 +366,7 @@ namespace EnvironmentComparison.Services
                     "advancedgroupby")
             };
 
-            foreach (var entity in RetrieveAll(service, query, includeUnpublished))
+            foreach (var entity in RetrieveAll(service, query, includeUnpublished, pageLoaded))
             {
                 var table = ResolveTableName(entity, "returnedtypecode", tableNamesByObjectType);
                 if (string.IsNullOrWhiteSpace(table))
@@ -365,18 +396,184 @@ namespace EnvironmentComparison.Services
             }
         }
 
+        private static IEnumerable<ReportMetadataInfo> LoadReports(
+            IOrganizationService service,
+            IReadOnlyDictionary<int, string> tableNamesByObjectType,
+            bool includeUnpublished,
+            Action<int>? pageLoaded)
+        {
+            var query = new QueryExpression("report")
+            {
+                ColumnSet = new ColumnSet(
+                    "reportid",
+                    "reportidunique",
+                    "name",
+                    "description",
+                    "filename",
+                    "reporttypecode",
+                    "reportstatus",
+                    "languagecode",
+                    "mimetype",
+                    "defaultfilter",
+                    "bodytext",
+                    "ispersonal",
+                    "componentstate",
+                    "solutionid",
+                    "ismanaged",
+                    "introducedversion",
+                    "reportversion",
+                    "iscustomreport",
+                    "isscheduledreport",
+                    "parentreportid",
+                    "dependentmodelreportid")
+            };
+            query.Criteria.AddCondition("ispersonal", ConditionOperator.Equal, false);
+            query.Criteria.AddCondition("reporttypecode", ConditionOperator.Equal, 1);
+
+            var entities = RetrieveAll(
+                service,
+                query,
+                includeUnpublished,
+                pageLoaded,
+                ReportDefinitionPageSize);
+            var reportIds = entities
+                .Select(entity => EntityGuid(entity, "reportid") ?? entity.Id)
+                .Where(id => id != Guid.Empty)
+                .Distinct()
+                .ToList();
+            var associatedTables = LoadReportRelatedValues(
+                service,
+                "reportentity",
+                "objecttypecode",
+                reportIds,
+                includeUnpublished,
+                entity => ResolveTableName(entity, "objecttypecode", tableNamesByObjectType));
+            var categories = LoadReportRelatedValues(
+                service,
+                "reportcategory",
+                "categorycode",
+                reportIds,
+                includeUnpublished,
+                entity => EntityValue(entity, "categorycode"));
+            var visibility = LoadReportRelatedValues(
+                service,
+                "reportvisibility",
+                "visibilitycode",
+                reportIds,
+                includeUnpublished,
+                entity => EntityValue(entity, "visibilitycode"));
+
+            foreach (var entity in entities)
+            {
+                var reportId = EntityGuid(entity, "reportid") ?? entity.Id;
+                var name = EntityValue(entity, "name");
+                var rawRdl = EntityRawValue(entity, "bodytext");
+                var rawDefaultFilter = EntityRawValue(entity, "defaultfilter");
+                var properties = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["Report ID"] = reportId.ToString("D"),
+                    ["Report ID unique"] = EntityValue(entity, "reportidunique"),
+                    ["Name"] = name,
+                    ["Description"] = EntityValue(entity, "description"),
+                    ["File name"] = EntityValue(entity, "filename"),
+                    ["Report type"] = EntityValue(entity, "reporttypecode"),
+                    ["Report status"] = EntityValue(entity, "reportstatus"),
+                    ["Language code"] = EntityValue(entity, "languagecode"),
+                    ["MIME type"] = EntityValue(entity, "mimetype"),
+                    ["Default filter"] = NormalizeDefinition(rawDefaultFilter),
+                    ["RDL"] = NormalizeDefinition(rawRdl),
+                    ["Associated tables"] = RelatedReportValues(associatedTables, reportId),
+                    ["Categories"] = RelatedReportValues(categories, reportId),
+                    ["Visibility"] = RelatedReportValues(visibility, reportId),
+                    ["Personal"] = EntityValue(entity, "ispersonal"),
+                    ["Component state"] = EntityValue(entity, "componentstate"),
+                    ["Solution ID"] = EntityValue(entity, "solutionid"),
+                    ["Managed"] = EntityValue(entity, "ismanaged"),
+                    ["Introduced version"] = EntityValue(entity, "introducedversion"),
+                    ["Report version"] = EntityValue(entity, "reportversion"),
+                    ["Custom report"] = EntityValue(entity, "iscustomreport"),
+                    ["Scheduled report"] = EntityValue(entity, "isscheduledreport"),
+                    ["Parent report ID"] = EntityValue(entity, "parentreportid"),
+                    ["Dependent model report ID"] = EntityValue(entity, "dependentmodelreportid"),
+                    ["Raw default filter"] = rawDefaultFilter,
+                    ["Raw RDL"] = rawRdl
+                };
+                yield return new ReportMetadataInfo($"report|id:{reportId:D}", name, properties);
+            }
+        }
+
+        private static IReadOnlyDictionary<Guid, IReadOnlyList<string>> LoadReportRelatedValues(
+            IOrganizationService service,
+            string entityName,
+            string valueAttribute,
+            IReadOnlyList<Guid> reportIds,
+            bool includeUnpublished,
+            Func<Entity, string> readValue)
+        {
+            var values = new Dictionary<Guid, List<string>>();
+            const int batchSize = 500;
+            for (var offset = 0; offset < reportIds.Count; offset += batchSize)
+            {
+                var batch = reportIds.Skip(offset).Take(batchSize).Cast<object>().ToArray();
+                var query = new QueryExpression(entityName)
+                {
+                    ColumnSet = new ColumnSet("reportid", valueAttribute)
+                };
+                query.Criteria.AddCondition("reportid", ConditionOperator.In, batch);
+                foreach (var entity in RetrieveAll(service, query, includeUnpublished, null))
+                {
+                    var reportId = EntityReferenceId(entity, "reportid") ?? EntityGuid(entity, "reportid");
+                    var value = readValue(entity);
+                    if (!reportId.HasValue || string.IsNullOrWhiteSpace(value))
+                    {
+                        continue;
+                    }
+
+                    if (!values.TryGetValue(reportId.Value, out var reportValues))
+                    {
+                        reportValues = new List<string>();
+                        values[reportId.Value] = reportValues;
+                    }
+
+                    reportValues.Add(value);
+                }
+            }
+
+            return values.ToDictionary(
+                item => item.Key,
+                item => (IReadOnlyList<string>)item.Value
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                    .ToList());
+        }
+
+        private static string RelatedReportValues(
+            IReadOnlyDictionary<Guid, IReadOnlyList<string>> values,
+            Guid reportId)
+        {
+            return values.TryGetValue(reportId, out var reportValues)
+                ? string.Join(" | ", reportValues)
+                : string.Empty;
+        }
+
         private static List<Entity> RetrieveAll(IOrganizationService service, QueryExpression query)
         {
-            return RetrieveAll(service, query, false);
+            return RetrieveAll(service, query, false, null);
         }
 
         private static List<Entity> RetrieveAll(
             IOrganizationService service,
             QueryExpression query,
-            bool includeUnpublished)
+            bool includeUnpublished,
+            Action<int>? pageLoaded,
+            int? pageSize = null)
         {
             var result = new List<Entity>();
-            query.PageInfo = new PagingInfo { Count = 5000, PageNumber = 1 };
+            query.PageInfo = new PagingInfo
+            {
+                Count = pageSize ?? (includeUnpublished ? UnpublishedDefinitionPageSize : PublishedPageSize),
+                PageNumber = 1
+            };
             while (true)
             {
                 var page = includeUnpublished
@@ -384,6 +581,7 @@ namespace EnvironmentComparison.Services
                         new RetrieveUnpublishedMultipleRequest { Query = query })).EntityCollection
                     : service.RetrieveMultiple(query);
                 result.AddRange(page.Entities);
+                pageLoaded?.Invoke(query.PageInfo.PageNumber);
                 if (!page.MoreRecords)
                 {
                     return result;

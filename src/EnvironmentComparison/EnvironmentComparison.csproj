@@ -9,7 +9,7 @@
     <AssemblyVersion>1.0.0.8</AssemblyVersion>
     <FileVersion>1.0.0.8</FileVersion>
     <Company>Ross King</Company>
-    <Description>Compare Dataverse table, column, form, and system-view metadata between two environments.</Description>
+    <Description>Compare Dataverse tables, columns, forms, system views, and SSRS reports between two environments.</Description>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageOutputPath>$(MSBuildThisFileDirectory)..\..\artifacts</PackageOutputPath>
     <NuspecFile>EnvironmentComparison.nuspec</NuspecFile>

@@ -8,7 +8,7 @@ namespace EnvironmentComparison
 {
     [Export(typeof(IXrmToolBoxPlugin))]
     [ExportMetadata("Name", "Environment Comparison")]
-    [ExportMetadata("Description", "Compare Dataverse table, column, form, and system-view metadata between environments")]
+    [ExportMetadata("Description", "Compare Dataverse tables, columns, forms, system views, and SSRS reports between environments")]
     [ExportMetadata("SmallImageBase64", PluginImageData.Small)]
     [ExportMetadata("BigImageBase64", PluginImageData.Big)]
     [ExportMetadata("BackgroundColor", "#334155")]
@@ -27,4 +27,3 @@ namespace EnvironmentComparison
         }
     }
 }
-

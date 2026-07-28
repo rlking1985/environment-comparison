@@ -61,11 +61,13 @@ namespace EnvironmentComparison.Tests
             view["returnedtypecode"] = "account";
             view["name"] = "Active Accounts";
             service.UnpublishedRetrieveResults["savedquery"] = new EntityCollection(new List<Entity> { view });
+            var progress = new List<string>();
 
             var snapshot = new DataverseMetadataService().LoadSnapshot(
                 service,
                 ComparisonAreas.Forms | ComparisonAreas.Views,
-                true);
+                true,
+                (_, message) => progress.Add(message));
 
             Assert.IsTrue(snapshot.IncludesUnpublishedMetadata);
             Assert.AreEqual(1, snapshot.Forms.Count);
@@ -73,6 +75,11 @@ namespace EnvironmentComparison.Tests
             CollectionAssert.AreEquivalent(
                 new[] { "systemform", "savedquery" },
                 service.UnpublishedRetrievedEntityNames.ToArray());
+            CollectionAssert.AreEquivalent(
+                new[] { 250, 250 },
+                service.RetrievedQueries.Select(query => query.PageInfo.Count).ToArray());
+            Assert.IsTrue(progress.Any(message => message.Contains("unpublished system forms page 1")));
+            Assert.IsTrue(progress.Any(message => message.Contains("unpublished system views page 1")));
             Assert.AreEqual(0, service.RetrievedEntityNames.Count);
             Assert.AreEqual(0, service.WriteAttempts);
         }
@@ -240,6 +247,96 @@ namespace EnvironmentComparison.Tests
             Assert.AreEqual("Standard", classifications["new_standard"]);
             Assert.AreEqual("Intersect", classifications["new_intersect"]);
             Assert.AreEqual("BPF", classifications["new_bpf"]);
+        }
+
+        [TestMethod]
+        public void LoadsOrganizationSsrsReportsAndTheirPublicationMetadataUsingReadOnlyQueries()
+        {
+            var reportId = Guid.Parse("12345678-aaaa-bbbb-cccc-1234567890ab");
+            var report = new Entity("report", reportId);
+            report["reportid"] = reportId;
+            report["reportidunique"] = Guid.Parse("aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb");
+            report["name"] = "Student summary";
+            report["filename"] = "StudentSummary.rdl";
+            report["reporttypecode"] = new OptionSetValue(1);
+            report["ispersonal"] = false;
+            report["bodytext"] = "\r\n<Report xmlns='urn:report'><DataSets><DataSet Name='Students' /></DataSets></Report>\r\n";
+            report["defaultfilter"] = "<fetch><entity name='account' /></fetch>";
+
+            var reportEntity = new Entity("reportentity");
+            reportEntity["reportid"] = new EntityReference("report", reportId);
+            reportEntity["objecttypecode"] = "account";
+            var reportCategory = new Entity("reportcategory");
+            reportCategory["reportid"] = new EntityReference("report", reportId);
+            reportCategory["categorycode"] = new OptionSetValue(4);
+            var reportVisibility = new Entity("reportvisibility");
+            reportVisibility["reportid"] = new EntityReference("report", reportId);
+            reportVisibility["visibilitycode"] = new OptionSetValue(2);
+            var service = new RecordingService();
+            service.RetrieveResults["report"] = new EntityCollection(new List<Entity> { report });
+            service.RetrieveResults["reportentity"] = new EntityCollection(new List<Entity> { reportEntity });
+            service.RetrieveResults["reportcategory"] = new EntityCollection(new List<Entity> { reportCategory });
+            service.RetrieveResults["reportvisibility"] = new EntityCollection(new List<Entity> { reportVisibility });
+
+            var snapshot = new DataverseMetadataService().LoadSnapshot(
+                service,
+                ComparisonAreas.Reports,
+                false);
+
+            Assert.AreEqual(1, snapshot.Reports.Count);
+            var loaded = snapshot.Reports.Single();
+            Assert.AreEqual($"report|id:{reportId:D}", loaded.Key);
+            Assert.AreEqual("Student summary", loaded.Name);
+            Assert.AreEqual("account", loaded.GetProperty("Associated tables"));
+            Assert.AreEqual("4", loaded.GetProperty("Categories"));
+            Assert.AreEqual("2", loaded.GetProperty("Visibility"));
+            StringAssert.StartsWith(loaded.GetProperty("RDL"), "<Report");
+            StringAssert.StartsWith(loaded.GetProperty("Raw RDL"), "\r\n<Report");
+            CollectionAssert.AreEquivalent(
+                new[] { "report", "reportentity", "reportcategory", "reportvisibility" },
+                service.RetrievedEntityNames.ToArray());
+            var reportQuery = service.RetrievedQueries.Single(item => item.EntityName == "report");
+            Assert.AreEqual(25, reportQuery.PageInfo.Count);
+            Assert.IsTrue(reportQuery.Criteria.Conditions.Any(condition =>
+                condition.AttributeName == "ispersonal"
+                && condition.Operator == ConditionOperator.Equal
+                && condition.Values.Cast<object>().Single().Equals(false)));
+            Assert.IsTrue(reportQuery.Criteria.Conditions.Any(condition =>
+                condition.AttributeName == "reporttypecode"
+                && condition.Operator == ConditionOperator.Equal
+                && condition.Values.Cast<object>().Single().Equals(1)));
+            Assert.AreEqual(0, service.WriteAttempts);
+        }
+
+        [TestMethod]
+        public void IncludeUnpublishedUsesReadOnlyUnpublishedRequestsForReportsAndRelatedRecords()
+        {
+            var reportId = Guid.Parse("12345678-aaaa-bbbb-cccc-1234567890ab");
+            var report = new Entity("report", reportId);
+            report["reportid"] = reportId;
+            report["name"] = "Student summary";
+            report["reporttypecode"] = new OptionSetValue(1);
+            report["ispersonal"] = false;
+            report["bodytext"] = "<Report />";
+            var service = new RecordingService();
+            service.UnpublishedRetrieveResults["report"] = new EntityCollection(new List<Entity> { report });
+            service.UnpublishedRetrieveResults["reportentity"] = new EntityCollection();
+            service.UnpublishedRetrieveResults["reportcategory"] = new EntityCollection();
+            service.UnpublishedRetrieveResults["reportvisibility"] = new EntityCollection();
+
+            var snapshot = new DataverseMetadataService().LoadSnapshot(
+                service,
+                ComparisonAreas.Reports,
+                true);
+
+            Assert.AreEqual(1, snapshot.Reports.Count);
+            Assert.IsTrue(snapshot.IncludesUnpublishedMetadata);
+            CollectionAssert.AreEquivalent(
+                new[] { "report", "reportentity", "reportcategory", "reportvisibility" },
+                service.UnpublishedRetrievedEntityNames.ToArray());
+            Assert.AreEqual(25, service.RetrievedQueries.Single(item => item.EntityName == "report").PageInfo.Count);
+            Assert.AreEqual(0, service.RetrievedEntityNames.Count);
+            Assert.AreEqual(0, service.WriteAttempts);
         }
 
         [TestMethod]
