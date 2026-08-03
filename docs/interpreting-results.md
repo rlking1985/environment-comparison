@@ -30,7 +30,8 @@ Severity is a prioritization aid, not an automatic deployment decision. Review t
 | Difference | Missing in A, Missing in B, or Changed |
 | Table | Display and logical name for table-associated rows |
 | Table classification | Standard, Intersect, BPF, or blank for organization-level rows |
-| Component | Column, form, view, or report identity |
+| Component A / Component B | Environment-specific component name. Tables and columns include their logical name; forms, views, and reports use their display name. The missing side is blank for presence differences. |
+| Component A (ID) / Component B (ID) | Environment-specific component GUID where Dataverse supplies one |
 | Property | The presence or metadata setting that differs |
 | Environment A/B | Compact values or definition fingerprints |
 | Details | Plain-language explanation and any fallback or rename hint |
@@ -39,7 +40,7 @@ Severity is a prioritization aid, not an automatic deployment decision. Review t
 
 The plugin filters can be combined:
 
-- **Search** checks table names, classification, component names and keys, property, preview values, and Details.
+- **Search** checks table names, classification, component names, logical names, IDs, property, preview values, and Details.
 - **Table logical name regex** scopes table, column, form, and view rows after retrieval.
 - **Classification** is populated from the comparison. **No classification** selects reports and other organization-level rows.
 - **Area** limits the component type.

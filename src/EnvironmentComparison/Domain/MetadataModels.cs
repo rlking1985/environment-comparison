@@ -206,7 +206,11 @@ namespace EnvironmentComparison.Domain
             string? environmentAPreviewValue = null,
             string? environmentBPreviewValue = null,
             string? environmentAComponentKey = null,
-            string? environmentBComponentKey = null)
+            string? environmentBComponentKey = null,
+            string? environmentAComponentName = null,
+            string? environmentBComponentName = null,
+            string? environmentAComponentId = null,
+            string? environmentBComponentId = null)
         {
             Severity = severity;
             Scope = scope;
@@ -223,6 +227,20 @@ namespace EnvironmentComparison.Domain
             EnvironmentBPreviewValue = environmentBPreviewValue ?? EnvironmentBValue;
             EnvironmentAComponentKey = environmentAComponentKey ?? ComponentKey;
             EnvironmentBComponentKey = environmentBComponentKey ?? ComponentKey;
+            var componentExistsInA = kind != DifferenceKind.MissingInEnvironmentA;
+            var componentExistsInB = kind != DifferenceKind.MissingInEnvironmentB;
+            EnvironmentAComponent = componentExistsInA
+                ? FormatComponent(scope, TableLogicalName, environmentAComponentName ?? ComponentName, ComponentKey)
+                : string.Empty;
+            EnvironmentBComponent = componentExistsInB
+                ? FormatComponent(scope, TableLogicalName, environmentBComponentName ?? ComponentName, ComponentKey)
+                : string.Empty;
+            EnvironmentAComponentId = componentExistsInA
+                ? environmentAComponentId ?? ExtractComponentId(EnvironmentAComponentKey)
+                : string.Empty;
+            EnvironmentBComponentId = componentExistsInB
+                ? environmentBComponentId ?? ExtractComponentId(EnvironmentBComponentKey)
+                : string.Empty;
             Details = details ?? string.Empty;
         }
 
@@ -256,7 +274,45 @@ namespace EnvironmentComparison.Domain
 
         public string EnvironmentBComponentKey { get; }
 
+        public string EnvironmentAComponent { get; }
+
+        public string EnvironmentAComponentId { get; }
+
+        public string EnvironmentBComponent { get; }
+
+        public string EnvironmentBComponentId { get; }
+
         public string Details { get; }
+
+        private static string FormatComponent(
+            ComparisonScope scope,
+            string tableLogicalName,
+            string componentName,
+            string componentKey)
+        {
+            var displayName = componentName ?? string.Empty;
+            var logicalName = scope == ComparisonScope.Table
+                ? tableLogicalName
+                : scope == ComparisonScope.Column
+                    ? componentKey
+                    : string.Empty;
+            if (logicalName.Length == 0)
+            {
+                return displayName;
+            }
+
+            return displayName.Length == 0
+                ? logicalName
+                : $"{displayName} ({logicalName})";
+        }
+
+        private static string ExtractComponentId(string key)
+        {
+            const string marker = "|id:";
+            var safeKey = key ?? string.Empty;
+            var markerIndex = safeKey.LastIndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            return markerIndex < 0 ? string.Empty : safeKey.Substring(markerIndex + marker.Length);
+        }
     }
 
     public sealed class MetadataComparisonResult

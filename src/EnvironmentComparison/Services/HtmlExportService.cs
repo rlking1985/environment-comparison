@@ -133,6 +133,10 @@ namespace EnvironmentComparison.Services
             WriteString(writer, "classification", issue.TableClassification, true);
             WriteString(writer, "componentKey", issue.ComponentKey, true);
             WriteString(writer, "componentName", issue.ComponentName, true);
+            WriteString(writer, "componentA", issue.EnvironmentAComponent, true);
+            WriteString(writer, "componentAId", issue.EnvironmentAComponentId, true);
+            WriteString(writer, "componentB", issue.EnvironmentBComponent, true);
+            WriteString(writer, "componentBId", issue.EnvironmentBComponentId, true);
             WriteString(writer, "property", issue.PropertyName, true);
             WriteString(writer, "a", issue.EnvironmentAValue, true);
             WriteString(writer, "b", issue.EnvironmentBValue, true);
@@ -325,7 +329,7 @@ namespace EnvironmentComparison.Services
     .drawer-head { flex:0 0 auto; display:flex; align-items:flex-start; justify-content:space-between; gap:18px; padding:12px 16px; border-bottom:1px solid var(--border); }
     .drawer-head h2 { margin:0 0 3px; font-size:19px; }
     .drawer-actions { display:flex; flex-wrap:wrap; gap:7px; }
-    .drawer-meta { flex:0 0 auto; display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:1px; background:var(--border); border-bottom:1px solid var(--border); }
+    .drawer-meta { flex:0 0 auto; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1px; background:var(--border); border-bottom:1px solid var(--border); }
     .meta-item { min-width:0; padding:9px 12px; background:#f8fafc; }
     .meta-item span { display:block; color:var(--muted); font-size:11px; text-transform:uppercase; }
     .meta-item strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -389,18 +393,21 @@ namespace EnvironmentComparison.Services
       <div class='statusbar'><span id='statusText' aria-live='polite'>Loading comparison data…</span><span><button id='resetColumns' class='button' type='button'>Reset column widths</button> &nbsp; Click <strong>Inspect</strong> to view or diff complete values.</span></div>
       <div class='table-wrap'>
         <table id='resultsTable'>
-          <colgroup><col style='width:105px'><col style='width:100px'><col style='width:190px'><col style='width:240px'><col style='width:120px'><col style='width:250px'><col style='width:170px'><col style='width:250px'><col style='width:250px'><col style='width:90px'></colgroup>
+          <colgroup><col style='width:105px'><col style='width:100px'><col style='width:190px'><col style='width:240px'><col style='width:120px'><col style='width:240px'><col style='width:180px'><col style='width:240px'><col style='width:180px'><col style='width:170px'><col style='width:250px'><col style='width:250px'><col style='width:90px'></colgroup>
           <thead><tr>
             <th data-key='severityOrder' aria-sort='ascending'><button type='button' data-sort='severityOrder'>Severity</button><span class='ec-column-resizer' data-column-index='0' role='separator' tabindex='0' aria-orientation='vertical' aria-label='Resize Severity column'></span></th>
             <th data-key='scope'><button type='button' data-sort='scope'>Area</button><span class='ec-column-resizer' data-column-index='1' role='separator' tabindex='0' aria-orientation='vertical' aria-label='Resize Area column'></span></th>
             <th data-key='difference'><button type='button' data-sort='difference'>Difference</button><span class='ec-column-resizer' data-column-index='2' role='separator' tabindex='0' aria-orientation='vertical' aria-label='Resize Difference column'></span></th>
             <th data-key='tableLogical'><button type='button' data-sort='tableLogical'>Table</button><span class='ec-column-resizer' data-column-index='3' role='separator' tabindex='0' aria-orientation='vertical' aria-label='Resize Table column'></span></th>
             <th data-key='classification'><button type='button' data-sort='classification'>Classification</button><span class='ec-column-resizer' data-column-index='4' role='separator' tabindex='0' aria-orientation='vertical' aria-label='Resize Classification column'></span></th>
-            <th data-key='componentName'><button type='button' data-sort='componentName'>Component</button><span class='ec-column-resizer' data-column-index='5' role='separator' tabindex='0' aria-orientation='vertical' aria-label='Resize Component column'></span></th>
-            <th data-key='property'><button type='button' data-sort='property'>Property</button><span class='ec-column-resizer' data-column-index='6' role='separator' tabindex='0' aria-orientation='vertical' aria-label='Resize Property column'></span></th>
-            <th data-key='aPreview'><button type='button' data-sort='aPreview'>Environment A</button><span class='ec-column-resizer' data-column-index='7' role='separator' tabindex='0' aria-orientation='vertical' aria-label='Resize Environment A column'></span></th>
-            <th data-key='bPreview'><button type='button' data-sort='bPreview'>Environment B</button><span class='ec-column-resizer' data-column-index='8' role='separator' tabindex='0' aria-orientation='vertical' aria-label='Resize Environment B column'></span></th>
-            <th class='action-column'><span style='display:block;padding:10px 9px'>Inspect</span><span class='ec-column-resizer' data-column-index='9' role='separator' tabindex='0' aria-orientation='vertical' aria-label='Resize Inspect column'></span></th>
+            <th data-key='componentA'><button type='button' data-sort='componentA'>Component A</button><span class='ec-column-resizer' data-column-index='5' role='separator' tabindex='0' aria-orientation='vertical' aria-label='Resize Component A column'></span></th>
+            <th data-key='componentAId'><button type='button' data-sort='componentAId'>Component A (ID)</button><span class='ec-column-resizer' data-column-index='6' role='separator' tabindex='0' aria-orientation='vertical' aria-label='Resize Component A ID column'></span></th>
+            <th data-key='componentB'><button type='button' data-sort='componentB'>Component B</button><span class='ec-column-resizer' data-column-index='7' role='separator' tabindex='0' aria-orientation='vertical' aria-label='Resize Component B column'></span></th>
+            <th data-key='componentBId'><button type='button' data-sort='componentBId'>Component B (ID)</button><span class='ec-column-resizer' data-column-index='8' role='separator' tabindex='0' aria-orientation='vertical' aria-label='Resize Component B ID column'></span></th>
+            <th data-key='property'><button type='button' data-sort='property'>Property</button><span class='ec-column-resizer' data-column-index='9' role='separator' tabindex='0' aria-orientation='vertical' aria-label='Resize Property column'></span></th>
+            <th data-key='aPreview'><button type='button' data-sort='aPreview'>Environment A</button><span class='ec-column-resizer' data-column-index='10' role='separator' tabindex='0' aria-orientation='vertical' aria-label='Resize Environment A column'></span></th>
+            <th data-key='bPreview'><button type='button' data-sort='bPreview'>Environment B</button><span class='ec-column-resizer' data-column-index='11' role='separator' tabindex='0' aria-orientation='vertical' aria-label='Resize Environment B column'></span></th>
+            <th class='action-column'><span style='display:block;padding:10px 9px'>Inspect</span><span class='ec-column-resizer' data-column-index='12' role='separator' tabindex='0' aria-orientation='vertical' aria-label='Resize Inspect column'></span></th>
           </tr></thead>
           <tbody id='resultsBody'></tbody>
         </table>
@@ -451,7 +458,7 @@ namespace EnvironmentComparison.Services
     const jsDiffUrl = 'https://cdn.jsdelivr.net/npm/diff@9.0.0/dist/diff.min.js';
     const diff2HtmlUrl = 'https://cdn.jsdelivr.net/npm/diff2html@3.4.56/bundles/js/diff2html.min.js';
     const diff2HtmlCssUrl = 'https://cdn.jsdelivr.net/npm/diff2html@3.4.56/bundles/css/diff2html.min.css';
-    const initialColumnWidths = [105,100,190,240,120,250,170,250,250,90];
+    const initialColumnWidths = [105,100,190,240,120,240,180,240,180,170,250,250,90];
     let filteredRows = allRows.slice();
     let currentPage = 1;
     let pageSize = 100;
@@ -466,7 +473,6 @@ namespace EnvironmentComparison.Services
 
     function formatNumber(value) { return Number(value || 0).toLocaleString(); }
     function displayTable(row) { return row.tableDisplay ? `${row.tableDisplay} (${row.tableLogical})` : row.tableLogical; }
-    function displayComponent(row) { return row.componentName ? `${row.componentName} (${row.componentKey})` : row.componentKey; }
     function normalize(value) { return String(value || '').toLocaleLowerCase(); }
 
     function createOption(value, label) {
@@ -640,7 +646,7 @@ namespace EnvironmentComparison.Services
 
     function rowSearchText(row) {
       if (!row._searchText) {
-        row._searchText = normalize([row.severity,row.scope,row.difference,row.tableLogical,row.tableDisplay,row.classification,row.componentKey,row.componentName,row.property,row.aPreview,row.bPreview,row.details].join('\n'));
+        row._searchText = normalize([row.severity,row.scope,row.difference,row.tableLogical,row.tableDisplay,row.classification,row.componentA,row.componentAId,row.componentB,row.componentBId,row.componentKey,row.componentName,row.property,row.aPreview,row.bPreview,row.details].join('\n'));
       }
       return row._searchText;
     }
@@ -758,7 +764,7 @@ namespace EnvironmentComparison.Services
       if (!pageRows.length) {
         const row = document.createElement('tr');
         const cell = document.createElement('td');
-        cell.colSpan = 10;
+        cell.colSpan = 13;
         cell.className = 'empty';
         cell.textContent = 'No differences match the current filters.';
         row.appendChild(cell);
@@ -778,7 +784,10 @@ namespace EnvironmentComparison.Services
           row.appendChild(textCell(item.difference));
           row.appendChild(textCell(displayTable(item)));
           row.appendChild(textCell(item.classification));
-          row.appendChild(textCell(displayComponent(item)));
+          row.appendChild(textCell(item.componentA));
+          row.appendChild(textCell(item.componentAId));
+          row.appendChild(textCell(item.componentB));
+          row.appendChild(textCell(item.componentBId));
           row.appendChild(textCell(item.property));
           row.appendChild(textCell(item.aPreview));
           row.appendChild(textCell(item.bPreview));
@@ -899,13 +908,16 @@ namespace EnvironmentComparison.Services
 
     function showDetails(row) {
       selectedRow = row;
-      elements.detailHeading.textContent = `${row.scope}: ${row.componentName || row.tableDisplay || row.property}`;
+      elements.detailHeading.textContent = `${row.scope}: ${row.componentA || row.componentB || row.tableDisplay || row.property}`;
       elements.detailDescription.textContent = row.details;
       elements.drawerMeta.replaceChildren(
         metaItem('Severity', row.severity),
         metaItem('Difference', row.difference),
         metaItem('Table', displayTable(row)),
-        metaItem('Component', displayComponent(row)),
+        metaItem('Component A', row.componentA),
+        metaItem('Component A (ID)', row.componentAId),
+        metaItem('Component B', row.componentB),
+        metaItem('Component B (ID)', row.componentBId),
         metaItem('Property', row.property)
       );
       configureValueSources(row);

@@ -167,6 +167,7 @@ namespace EnvironmentComparison.Services
         private static TableMetadataInfo ToTable(EntityMetadata metadata, bool includeColumns)
         {
             var properties = ReadProperties(metadata, TableProperties);
+            properties["Metadata ID"] = metadata.MetadataId?.ToString("D") ?? string.Empty;
             properties["Table classification"] = ClassifyTable(metadata);
             var columns = includeColumns
                 ? (metadata.Attributes ?? Array.Empty<AttributeMetadata>())
@@ -179,6 +180,7 @@ namespace EnvironmentComparison.Services
         private static ColumnMetadataInfo ToColumn(AttributeMetadata metadata)
         {
             var properties = ReadProperties(metadata, ColumnProperties);
+            properties["Metadata ID"] = metadata.MetadataId?.ToString("D") ?? string.Empty;
             properties["Formula definition"] = NormalizeDefinition(properties["Formula definition"]);
             var optionSet = ReadRawProperty(metadata, "OptionSet");
             if (optionSet != null)

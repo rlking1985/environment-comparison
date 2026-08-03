@@ -447,7 +447,10 @@ namespace EnvironmentComparison.Ui
             AddGridColumn("Difference", "Difference", 145);
             AddGridColumn("Table", "Table", 165);
             AddGridColumn("Classification", "Table classification", 105);
-            AddGridColumn("Component", "Column / form / view / report", 205);
+            AddGridColumn("ComponentA", "Component A", 205);
+            AddGridColumn("ComponentAId", "Component A (ID)", 175);
+            AddGridColumn("ComponentB", "Component B", 205);
+            AddGridColumn("ComponentBId", "Component B (ID)", 175);
             AddGridColumn("Property", "Property", 165);
             AddGridColumn("A", "Environment A", 190);
             AddGridColumn("B", "Environment B", 190);
@@ -589,7 +592,10 @@ namespace EnvironmentComparison.Ui
                         DisplayDifference(issue.Kind),
                         DisplayTable(issue),
                         issue.TableClassification,
-                        DisplayComponent(issue),
+                        issue.EnvironmentAComponent,
+                        issue.EnvironmentAComponentId,
+                        issue.EnvironmentBComponent,
+                        issue.EnvironmentBComponentId,
                         issue.PropertyName,
                         issue.EnvironmentAPreviewValue,
                         issue.EnvironmentBPreviewValue,
@@ -655,6 +661,10 @@ namespace EnvironmentComparison.Ui
                     issue.TableClassification,
                     issue.ComponentKey,
                     issue.ComponentName,
+                    issue.EnvironmentAComponent,
+                    issue.EnvironmentAComponentId,
+                    issue.EnvironmentBComponent,
+                    issue.EnvironmentBComponentId,
                     issue.PropertyName,
                     issue.EnvironmentAPreviewValue,
                     issue.EnvironmentBPreviewValue,
@@ -681,8 +691,10 @@ namespace EnvironmentComparison.Ui
                 AddDetail("Difference", DisplayDifference(issue.Kind));
                 AddDetail("Table", DisplayTable(issue));
                 AddDetail("Table classification", issue.TableClassification);
-                AddDetail("Component key", issue.ComponentKey);
-                AddDetail("Component name", issue.ComponentName);
+                AddDetail("Component A", issue.EnvironmentAComponent);
+                AddDetail("Component A (ID)", issue.EnvironmentAComponentId);
+                AddDetail("Component B", issue.EnvironmentBComponent);
+                AddDetail("Component B (ID)", issue.EnvironmentBComponentId);
                 AddDetail("Property", issue.PropertyName);
                 AddDetail("Environment A", issue.EnvironmentAPreviewValue);
                 AddDetail("Environment B", issue.EnvironmentBPreviewValue);
@@ -1347,14 +1359,6 @@ namespace EnvironmentComparison.Ui
             return string.IsNullOrWhiteSpace(issue.TableDisplayName)
                 ? issue.TableLogicalName
                 : $"{issue.TableDisplayName} ({issue.TableLogicalName})";
-        }
-
-        private static string DisplayComponent(ComparisonIssue issue)
-        {
-            if (string.IsNullOrWhiteSpace(issue.ComponentKey)) return string.Empty;
-            return string.IsNullOrWhiteSpace(issue.ComponentName)
-                ? issue.ComponentKey
-                : $"{issue.ComponentName} ({issue.ComponentKey})";
         }
 
         private static string DisplayDifference(DifferenceKind kind)

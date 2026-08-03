@@ -260,7 +260,11 @@ namespace EnvironmentComparison.Services
                         missingInB
                             ? "The form exists in Environment A but is missing from Environment B."
                             : "The form exists in Environment B but is missing from Environment A.",
-                        TableClassification(form.TableLogicalName, tablesA, tablesB)));
+                        TableClassification(form.TableLogicalName, tablesA, tablesB),
+                        environmentAComponentName: form.Name,
+                        environmentBComponentName: form.Name,
+                        environmentAComponentId: form.GetProperty("Form ID"),
+                        environmentBComponentId: form.GetProperty("Form ID")));
                     continue;
                 }
 
@@ -274,7 +278,11 @@ namespace EnvironmentComparison.Services
                     formA.GetProperty,
                     formB.GetProperty,
                     FormPropertySeverity,
-                    issues);
+                    issues,
+                    environmentAComponentName: formA.Name,
+                    environmentBComponentName: formB.Name,
+                    environmentAComponentId: formA.GetProperty("Form ID"),
+                    environmentBComponentId: formB.GetProperty("Form ID"));
                 CompareFormSecurityRoles(
                     formA,
                     formB,
@@ -310,7 +318,11 @@ namespace EnvironmentComparison.Services
                 formA.GetProperty("Form security roles"),
                 formB.GetProperty("Form security roles"),
                 "The security roles allowed to use the form are different.",
-                tableClassification));
+                tableClassification,
+                environmentAComponentName: formA.Name,
+                environmentBComponentName: formB.Name,
+                environmentAComponentId: formA.GetProperty("Form ID"),
+                environmentBComponentId: formB.GetProperty("Form ID")));
         }
 
         private static void CompareViews(
@@ -344,7 +356,11 @@ namespace EnvironmentComparison.Services
                         missingInB
                             ? "The system view exists in Environment A but is missing from Environment B."
                             : "The system view exists in Environment B but is missing from Environment A.",
-                        TableClassification(view.TableLogicalName, tablesA, tablesB)));
+                        TableClassification(view.TableLogicalName, tablesA, tablesB),
+                        environmentAComponentName: view.Name,
+                        environmentBComponentName: view.Name,
+                        environmentAComponentId: view.GetProperty("View ID"),
+                        environmentBComponentId: view.GetProperty("View ID")));
                     continue;
                 }
 
@@ -358,7 +374,11 @@ namespace EnvironmentComparison.Services
                     viewA.GetProperty,
                     viewB.GetProperty,
                     ViewPropertySeverity,
-                    issues);
+                    issues,
+                    environmentAComponentName: viewA.Name,
+                    environmentBComponentName: viewB.Name,
+                    environmentAComponentId: viewA.GetProperty("View ID"),
+                    environmentBComponentId: viewB.GetProperty("View ID"));
             }
         }
 
@@ -445,7 +465,11 @@ namespace EnvironmentComparison.Services
                 issues,
                 fallbackDetails,
                 reportA.Key,
-                reportB.Key);
+                reportB.Key,
+                reportA.Name,
+                reportB.Name,
+                ReportIdValue(reportA),
+                ReportIdValue(reportB));
         }
 
         private static void AddReportPresenceIssue(
@@ -474,7 +498,11 @@ namespace EnvironmentComparison.Services
                 "Report presence",
                 missingInB ? "Present" : "Missing",
                 missingInB ? "Missing" : "Present",
-                details));
+                details,
+                environmentAComponentName: report.Name,
+                environmentBComponentName: report.Name,
+                environmentAComponentId: ReportIdValue(report),
+                environmentBComponentId: ReportIdValue(report)));
         }
 
         private static IReadOnlyDictionary<string, IReadOnlyList<ReportMetadataInfo>> GroupReportsByFallbackIdentity(
@@ -546,7 +574,11 @@ namespace EnvironmentComparison.Services
             ICollection<ComparisonIssue> issues,
             string additionalDetails = "",
             string? environmentAComponentKey = null,
-            string? environmentBComponentKey = null)
+            string? environmentBComponentKey = null,
+            string? environmentAComponentName = null,
+            string? environmentBComponentName = null,
+            string? environmentAComponentId = null,
+            string? environmentBComponentId = null)
         {
             foreach (var property in properties)
             {
@@ -581,7 +613,11 @@ namespace EnvironmentComparison.Services
                     definition ? DataverseMetadataService.DefinitionFingerprint(first) : null,
                     definition ? DataverseMetadataService.DefinitionFingerprint(second) : null,
                     environmentAComponentKey,
-                    environmentBComponentKey));
+                    environmentBComponentKey,
+                    environmentAComponentName,
+                    environmentBComponentName,
+                    environmentAComponentId,
+                    environmentBComponentId));
             }
         }
 
@@ -620,15 +656,19 @@ namespace EnvironmentComparison.Services
                 kind,
                 table.LogicalName,
                 table.DisplayName,
-                string.Empty,
-                string.Empty,
+                table.LogicalName,
+                table.DisplayName,
                 "Table presence",
                 missingInB ? "Present" : "Missing",
                 missingInB ? "Missing" : "Present",
                 missingInB
                     ? "The table exists in Environment A but is missing from Environment B."
                     : "The table exists in Environment B but is missing from Environment A.",
-                table.Classification);
+                table.Classification,
+                environmentAComponentName: table.DisplayName,
+                environmentBComponentName: table.DisplayName,
+                environmentAComponentId: table.GetProperty("Metadata ID"),
+                environmentBComponentId: table.GetProperty("Metadata ID"));
         }
 
         private static void CompareProperties(
@@ -651,13 +691,17 @@ namespace EnvironmentComparison.Services
                     DifferenceKind.Changed,
                     tableA.LogicalName,
                     Prefer(tableA.DisplayName, tableB.DisplayName),
-                    string.Empty,
-                    string.Empty,
+                    tableA.LogicalName,
+                    Prefer(tableA.DisplayName, tableB.DisplayName),
                     property.Key,
                     valueA,
                     valueB,
                     $"Table setting '{property.Key}' is different.",
-                    CombinedClassification(tableA.Classification, tableB.Classification)));
+                    CombinedClassification(tableA.Classification, tableB.Classification),
+                    environmentAComponentName: tableA.DisplayName,
+                    environmentBComponentName: tableB.DisplayName,
+                    environmentAComponentId: tableA.GetProperty("Metadata ID"),
+                    environmentBComponentId: tableB.GetProperty("Metadata ID")));
             }
         }
 
@@ -719,7 +763,11 @@ namespace EnvironmentComparison.Services
                             : $"Column setting '{property.Key}' is different.",
                         CombinedClassification(tableA.Classification, tableB.Classification),
                         definition ? DataverseMetadataService.DefinitionFingerprint(valueA) : null,
-                        definition ? DataverseMetadataService.DefinitionFingerprint(valueB) : null));
+                        definition ? DataverseMetadataService.DefinitionFingerprint(valueB) : null,
+                        environmentAComponentName: columnA.DisplayName,
+                        environmentBComponentName: columnB.DisplayName,
+                        environmentAComponentId: columnA.GetProperty("Metadata ID"),
+                        environmentBComponentId: columnB.GetProperty("Metadata ID")));
                 }
             }
         }
@@ -749,7 +797,11 @@ namespace EnvironmentComparison.Services
                 (missingInB
                     ? "The column exists in Environment A but is missing from Environment B."
                     : "The column exists in Environment B but is missing from Environment A.") + renameText,
-                table.Classification);
+                table.Classification,
+                environmentAComponentName: column.DisplayName,
+                environmentBComponentName: column.DisplayName,
+                environmentAComponentId: column.GetProperty("Metadata ID"),
+                environmentBComponentId: column.GetProperty("Metadata ID"));
         }
 
         private static ColumnMetadataInfo? FindRenameCandidate(

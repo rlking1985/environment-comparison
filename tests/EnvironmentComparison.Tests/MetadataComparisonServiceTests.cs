@@ -34,13 +34,17 @@ namespace EnvironmentComparison.Tests
             Assert.IsTrue(result.Issues.Any(issue => issue.Scope == ComparisonScope.Column
                 && issue.ComponentKey == "new_extra"
                 && issue.Kind == DifferenceKind.MissingInEnvironmentA));
+            var missingColumn = result.Issues.Single(issue => issue.Scope == ComparisonScope.Column
+                && issue.ComponentKey == "new_code");
+            Assert.AreEqual("Code (new_code)", missingColumn.EnvironmentAComponent);
+            Assert.AreEqual(string.Empty, missingColumn.EnvironmentBComponent);
         }
 
         [TestMethod]
         public void ReportsImportantColumnSettingsAndDisplayNameRenames()
         {
-            var sourceColumn = Column("new_code", "Student code", "String", "Requirement level", "ApplicationRequired", "Maximum length", "100", "Audit enabled", "True");
-            var targetColumn = Column("new_code", "Learner code", "String", "Requirement level", "None", "Maximum length", "50", "Audit enabled", "False");
+            var sourceColumn = Column("new_code", "Student code", "String", "Metadata ID", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "Requirement level", "ApplicationRequired", "Maximum length", "100", "Audit enabled", "True");
+            var targetColumn = Column("new_code", "Learner code", "String", "Metadata ID", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "Requirement level", "None", "Maximum length", "50", "Audit enabled", "False");
 
             var result = _service.Compare(
                 Snapshot(new[] { Table("new_student", sourceColumn) }, ComparisonAreas.Columns),
@@ -51,6 +55,11 @@ namespace EnvironmentComparison.Tests
                 result.Issues.Select(issue => issue.PropertyName).ToArray());
             Assert.AreEqual(DifferenceSeverity.Critical, result.Issues.Single(issue => issue.PropertyName == "Requirement level").Severity);
             StringAssert.Contains(result.Issues.Single(issue => issue.PropertyName == "Display name").Details, "renamed");
+            var maximumLengthIssue = result.Issues.Single(issue => issue.PropertyName == "Maximum length");
+            Assert.AreEqual("Student code (new_code)", maximumLengthIssue.EnvironmentAComponent);
+            Assert.AreEqual("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", maximumLengthIssue.EnvironmentAComponentId);
+            Assert.AreEqual("Learner code (new_code)", maximumLengthIssue.EnvironmentBComponent);
+            Assert.AreEqual("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", maximumLengthIssue.EnvironmentBComponentId);
         }
 
         [TestMethod]
@@ -75,15 +84,19 @@ namespace EnvironmentComparison.Tests
         {
             var table = Table("new_student");
             var formA = new FormMetadataInfo("new_student|unique:main", "new_student", "Main form", Properties(
+                "Form ID", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
                 "Form XML", DataverseMetadataService.NormalizeDefinition("<form><tab id='a'/></form>"),
                 "Form type", "2"));
-            var formB = new FormMetadataInfo("new_student|unique:main", "new_student", "Main form", Properties(
+            var formB = new FormMetadataInfo("new_student|unique:main", "new_student", "Student form", Properties(
+                "Form ID", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
                 "Form XML", DataverseMetadataService.NormalizeDefinition("<form><tab id='b'/></form>"),
                 "Form type", "2"));
             var viewA = new ViewMetadataInfo("new_student|id:1", "new_student", "Active students", Properties(
+                "View ID", "cccccccc-cccc-cccc-cccc-cccccccccccc",
                 "Fetch XML", DataverseMetadataService.NormalizeDefinition("<fetch><entity name='new_student'/></fetch>"),
                 "Layout XML", DataverseMetadataService.NormalizeDefinition("<grid name='resultset'/>") ));
-            var viewB = new ViewMetadataInfo("new_student|id:1", "new_student", "Active students", Properties(
+            var viewB = new ViewMetadataInfo("new_student|id:1", "new_student", "Current students", Properties(
+                "View ID", "dddddddd-dddd-dddd-dddd-dddddddddddd",
                 "Fetch XML", DataverseMetadataService.NormalizeDefinition("<fetch><entity name='account'/></fetch>"),
                 "Layout XML", DataverseMetadataService.NormalizeDefinition("<grid name='resultset'/>") ));
             var areas = ComparisonAreas.Forms | ComparisonAreas.Views;
@@ -97,8 +110,16 @@ namespace EnvironmentComparison.Tests
             StringAssert.StartsWith(formIssue.EnvironmentAValue, "<form");
             StringAssert.StartsWith(formIssue.EnvironmentAPreviewValue, "SHA-256 ");
             Assert.AreEqual("Standard", formIssue.TableClassification);
+            Assert.AreEqual("Main form", formIssue.EnvironmentAComponent);
+            Assert.AreEqual("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", formIssue.EnvironmentAComponentId);
+            Assert.AreEqual("Student form", formIssue.EnvironmentBComponent);
+            Assert.AreEqual("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", formIssue.EnvironmentBComponentId);
             StringAssert.StartsWith(viewIssue.EnvironmentAValue, "<fetch");
             StringAssert.StartsWith(viewIssue.EnvironmentAPreviewValue, "SHA-256 ");
+            Assert.AreEqual("Active students", viewIssue.EnvironmentAComponent);
+            Assert.AreEqual("cccccccc-cccc-cccc-cccc-cccccccccccc", viewIssue.EnvironmentAComponentId);
+            Assert.AreEqual("Current students", viewIssue.EnvironmentBComponent);
+            Assert.AreEqual("dddddddd-dddd-dddd-dddd-dddddddddddd", viewIssue.EnvironmentBComponentId);
             Assert.IsFalse(result.Issues.Any(issue => issue.Scope == ComparisonScope.Table || issue.Scope == ComparisonScope.Column));
         }
 
@@ -275,6 +296,10 @@ namespace EnvironmentComparison.Tests
             Assert.IsTrue(result.Issues.All(issue => issue.ComponentKey == reportA.Key));
             Assert.IsTrue(result.Issues.All(issue => issue.EnvironmentAComponentKey == reportA.Key));
             Assert.IsTrue(result.Issues.All(issue => issue.EnvironmentBComponentKey == reportB.Key));
+            Assert.IsTrue(result.Issues.All(issue => issue.EnvironmentAComponent == "Account Summary"));
+            Assert.IsTrue(result.Issues.All(issue => issue.EnvironmentAComponentId == "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
+            Assert.IsTrue(result.Issues.All(issue => issue.EnvironmentBComponent == "Account Summary"));
+            Assert.IsTrue(result.Issues.All(issue => issue.EnvironmentBComponentId == "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"));
             Assert.IsTrue(result.Issues.All(issue => issue.Details.Contains("Fallback matched by report name, filename, report type and language")));
             Assert.IsTrue(result.Issues.All(issue => issue.Details.Contains("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")));
             Assert.IsTrue(result.Issues.All(issue => issue.Details.Contains("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")));
@@ -348,11 +373,11 @@ namespace EnvironmentComparison.Tests
         {
             var tableA = new TableMetadataInfo(
                 "new_process",
-                Properties("Display name", "Process", "Table classification", "Standard"),
+                Properties("Metadata ID", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "Display name", "Process", "Table classification", "Standard"),
                 Array.Empty<ColumnMetadataInfo>());
             var tableB = new TableMetadataInfo(
                 "new_process",
-                Properties("Display name", "Process", "Table classification", "BPF"),
+                Properties("Metadata ID", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "Display name", "Business Process", "Table classification", "BPF"),
                 Array.Empty<ColumnMetadataInfo>());
 
             var result = _service.Compare(
@@ -364,6 +389,10 @@ namespace EnvironmentComparison.Tests
             Assert.AreEqual("Standard", issue.EnvironmentAValue);
             Assert.AreEqual("BPF", issue.EnvironmentBValue);
             Assert.AreEqual("Standard / BPF", issue.TableClassification);
+            Assert.AreEqual("Process (new_process)", issue.EnvironmentAComponent);
+            Assert.AreEqual("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", issue.EnvironmentAComponentId);
+            Assert.AreEqual("Business Process (new_process)", issue.EnvironmentBComponent);
+            Assert.AreEqual("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", issue.EnvironmentBComponentId);
         }
 
         [TestMethod]

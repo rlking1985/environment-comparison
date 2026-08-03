@@ -177,8 +177,11 @@ namespace EnvironmentComparison.Tests
         [TestMethod]
         public void MapsTableAndImportantColumnMetadataWithoutManagedState()
         {
+            var tableMetadataId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+            var columnMetadataId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
             var entityMetadata = new EntityMetadata
             {
+                MetadataId = tableMetadataId,
                 LogicalName = "new_student",
                 SchemaName = "new_Student",
                 DisplayName = new Label("Student", 1033),
@@ -194,6 +197,7 @@ namespace EnvironmentComparison.Tests
                     {
                         new StringAttributeMetadata
                         {
+                            MetadataId = columnMetadataId,
                             LogicalName = "new_code",
                             SchemaName = "new_Code",
                             DisplayName = new Label("Student code", 1033),
@@ -215,10 +219,12 @@ namespace EnvironmentComparison.Tests
 
             Assert.AreEqual(1, snapshot.Tables.Count);
             Assert.AreEqual("Student", snapshot.Tables[0].DisplayName);
+            Assert.AreEqual(tableMetadataId.ToString("D"), snapshot.Tables[0].GetProperty("Metadata ID"));
             Assert.AreEqual("Standard", snapshot.Tables[0].Classification);
             Assert.AreEqual("UserOwned", snapshot.Tables[0].GetProperty("Ownership type"));
             Assert.AreEqual("True", snapshot.Tables[0].GetProperty("Audit enabled"));
             Assert.AreEqual(1, snapshot.Tables[0].Columns.Count);
+            Assert.AreEqual(columnMetadataId.ToString("D"), snapshot.Tables[0].Columns[0].GetProperty("Metadata ID"));
             Assert.AreEqual("100", snapshot.Tables[0].Columns[0].GetProperty("Maximum length"));
             Assert.AreEqual("ApplicationRequired", snapshot.Tables[0].Columns[0].GetProperty("Requirement level"));
             Assert.IsFalse(snapshot.Tables[0].Properties.ContainsKey("Managed"));

@@ -7,14 +7,14 @@
     <authors>Ross King</authors>
     <owners>Ross King</owners>
     <projectUrl>https://github.com/rlking1985/environment-comparison</projectUrl>
-    <iconUrl>https://api.nuget.org/v3-flatcontainer/environmentcomparison.xrmtoolbox/$version$/icon</iconUrl>
+    <iconUrl>https://raw.githubusercontent.com/rlking1985/environment-comparison/dev/src/EnvironmentComparison/assets/icon.png</iconUrl>
     <icon>icon.png</icon>
     <readme>README.md</readme>
     <licenseUrl>https://licenses.nuget.org/MIT</licenseUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>Read-only comparison of Dataverse tables, columns, forms, system views, and organization SSRS reports between two environments. Highlights missing components and important definition differences while excluding managed-versus-unmanaged noise.</description>
     <summary>Compare important Dataverse metadata safely between environments.</summary>
-    <releaseNotes>Removes the prefilled table logical-name regex so comparisons start without output scoping. The filter remains available when a user enters a pattern.</releaseNotes>
+    <releaseNotes>Uses a stable public PNG logo URL for XrmToolBox portal validation. The table logical-name regex remains empty by default.</releaseNotes>
     <copyright>Copyright © 2026 Ross King</copyright>
     <tags>XrmToolBox Plugins Dataverse Dynamics365 Metadata Tables Columns Reports SSRS Comparison</tags>
     <dependencies>

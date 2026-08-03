@@ -25,6 +25,8 @@ Clear or change filters before exporting if the file needs a broader set.
 
 Every field is quoted. Values beginning with spreadsheet formula characters are prefixed with an apostrophe to prevent formula execution when opened in Excel.
 
+Component identity is exported separately for each environment in `Component A`, `Component A (ID)`, `Component B`, and `Component B (ID)`. Table and column component names include their logical name; form, view, and report component names use their display name only.
+
 ### Excel cell limits
 
 Excel limits one cell to 32,767 characters. If an Environment A or Environment B value exceeds that limit, the plugin creates numbered columns such as:

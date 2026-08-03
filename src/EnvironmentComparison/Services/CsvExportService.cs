@@ -20,8 +20,10 @@ namespace EnvironmentComparison.Services
             "Table logical name",
             "Table display name",
             "Table classification",
-            "Component key",
-            "Component name",
+            "Component A",
+            "Component A (ID)",
+            "Component B",
+            "Component B (ID)",
             "Property"
         };
 
@@ -52,8 +54,10 @@ namespace EnvironmentComparison.Services
                     issue.TableLogicalName,
                     issue.TableDisplayName,
                     issue.TableClassification,
-                    issue.ComponentKey,
-                    issue.ComponentName,
+                    issue.EnvironmentAComponent,
+                    issue.EnvironmentAComponentId,
+                    issue.EnvironmentBComponent,
+                    issue.EnvironmentBComponentId,
                     issue.PropertyName
                 };
                 var escapedValues = leadingValues.Select(Escape)

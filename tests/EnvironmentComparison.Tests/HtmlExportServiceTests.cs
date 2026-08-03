@@ -52,7 +52,15 @@ namespace EnvironmentComparison.Tests
             StringAssert.Contains(html, "createTwoFilesPatch");
             StringAssert.Contains(html, "outputFormat:elements.diffFormat.value");
             StringAssert.Contains(html, "class='ec-column-resizer'");
-            StringAssert.Contains(html, "data-column-index='9'");
+            StringAssert.Contains(html, "data-column-index='12'");
+            StringAssert.Contains(html, ">Component A</button>");
+            StringAssert.Contains(html, ">Component A (ID)</button>");
+            StringAssert.Contains(html, ">Component B</button>");
+            StringAssert.Contains(html, ">Component B (ID)</button>");
+            StringAssert.Contains(html, "\"componentA\":");
+            StringAssert.Contains(html, "\"componentAId\":");
+            StringAssert.Contains(html, "\"componentB\":");
+            StringAssert.Contains(html, "\"componentBId\":");
             StringAssert.Contains(html, "setPointerCapture(event.pointerId)");
             StringAssert.Contains(html, "style.minWidth = `${tableWidth}px`");
             StringAssert.Contains(html, "function fitResultsTableToContainer()");
