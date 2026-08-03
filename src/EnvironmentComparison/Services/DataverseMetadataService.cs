@@ -220,8 +220,12 @@ namespace EnvironmentComparison.Services
                     "introducedversion",
                     "ancestorformid")
             };
+            query.Criteria.AddCondition("componentstate", ConditionOperator.In, 0, 1);
+            query.AddOrder("formid", OrderType.Ascending);
 
-            var entities = RetrieveAll(service, query, includeUnpublished, pageLoaded);
+            var entities = CanonicalFormEntities(
+                RetrieveAll(service, query, includeUnpublished, pageLoaded),
+                includeUnpublished);
             var roleIds = entities
                 .SelectMany(entity => FormRoleIds(EntityRawValue(entity, "formxml")))
                 .Distinct()
@@ -269,6 +273,28 @@ namespace EnvironmentComparison.Services
                 };
                 yield return new FormMetadataInfo(key, table, name, properties);
             }
+        }
+
+        private static IReadOnlyList<Entity> CanonicalFormEntities(
+            IEnumerable<Entity> entities,
+            bool includeUnpublished)
+        {
+            return entities
+                .GroupBy(entity => EntityGuid(entity, "formid") ?? entity.Id)
+                .Select(group => group
+                    .OrderByDescending(entity => FormRecordPriority(entity, includeUnpublished))
+                    .ThenBy(entity => entity.Id)
+                    .First())
+                .ToList();
+        }
+
+        private static int FormRecordPriority(Entity entity, bool includeUnpublished)
+        {
+            var componentState = EntityValue(entity, "componentstate");
+            if (includeUnpublished && componentState == "1") return 3;
+            if (componentState == "0") return 2;
+            if (!includeUnpublished && componentState == "1") return 1;
+            return 0;
         }
 
         private static IReadOnlyDictionary<Guid, FormRoleInfo> LoadFormRoles(

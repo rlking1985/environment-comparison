@@ -236,60 +236,258 @@ namespace EnvironmentComparison.Services
             IReadOnlyDictionary<string, TableMetadataInfo> tablesB,
             ICollection<ComparisonIssue> issues)
         {
-            var formsA = environmentA.Forms.ToDictionary(form => form.Key, StringComparer.OrdinalIgnoreCase);
-            var formsB = environmentB.Forms.ToDictionary(form => form.Key, StringComparer.OrdinalIgnoreCase);
-            foreach (var key in formsA.Keys.Union(formsB.Keys, StringComparer.OrdinalIgnoreCase))
+            var formsA = CollapseDuplicateFormIds(environmentA.Forms, environmentA.IncludesUnpublishedMetadata);
+            var formsB = CollapseDuplicateFormIds(environmentB.Forms, environmentB.IncludesUnpublishedMetadata);
+            var matchedA = new HashSet<FormMetadataInfo>();
+            var matchedB = new HashSet<FormMetadataInfo>();
+
+            var formsByIdA = FormsByIdentity(formsA, FormId);
+            var formsByIdB = FormsByIdentity(formsB, FormId);
+            foreach (var formId in formsByIdA.Keys.Intersect(formsByIdB.Keys, StringComparer.OrdinalIgnoreCase))
             {
-                var hasA = formsA.TryGetValue(key, out var formA);
-                var hasB = formsB.TryGetValue(key, out var formB);
-                if (!hasA || !hasB)
+                var formA = formsByIdA[formId].Single();
+                var formB = formsByIdB[formId].Single();
+                CompareFormPair(formA, formB, string.Empty, tablesA, tablesB, issues);
+                matchedA.Add(formA);
+                matchedB.Add(formB);
+            }
+
+            var remainingA = formsA.Where(form => !matchedA.Contains(form)).ToList();
+            var remainingB = formsB.Where(form => !matchedB.Contains(form)).ToList();
+            var fallbackGroupsA = FormsByIdentity(remainingA, FormFallbackIdentity);
+            var fallbackGroupsB = FormsByIdentity(remainingB, FormFallbackIdentity);
+            foreach (var identity in fallbackGroupsA.Keys.Union(fallbackGroupsB.Keys, StringComparer.OrdinalIgnoreCase))
+            {
+                fallbackGroupsA.TryGetValue(identity, out var candidatesA);
+                fallbackGroupsB.TryGetValue(identity, out var candidatesB);
+                candidatesA = candidatesA ?? Array.Empty<FormMetadataInfo>();
+                candidatesB = candidatesB ?? Array.Empty<FormMetadataInfo>();
+
+                if (candidatesA.Count == 1 && candidatesB.Count == 1)
                 {
-                    var form = formA ?? formB!;
-                    var missingInB = hasA;
-                    issues.Add(new ComparisonIssue(
-                        missingInB ? DifferenceSeverity.High : DifferenceSeverity.Medium,
-                        ComparisonScope.Form,
-                        missingInB ? DifferenceKind.MissingInEnvironmentB : DifferenceKind.MissingInEnvironmentA,
-                        form.TableLogicalName,
-                        TableDisplayName(form.TableLogicalName, tablesA, tablesB),
-                        form.Key,
-                        form.Name,
-                        "Form presence",
-                        missingInB ? "Present" : "Missing",
-                        missingInB ? "Missing" : "Present",
-                        missingInB
-                            ? "The form exists in Environment A but is missing from Environment B."
-                            : "The form exists in Environment B but is missing from Environment A.",
-                        TableClassification(form.TableLogicalName, tablesA, tablesB),
-                        environmentAComponentName: form.Name,
-                        environmentBComponentName: form.Name,
-                        environmentAComponentId: form.GetProperty("Form ID"),
-                        environmentBComponentId: form.GetProperty("Form ID")));
+                    var formA = candidatesA[0];
+                    var formB = candidatesB[0];
+                    CompareFormPair(
+                        formA,
+                        formB,
+                        FormFallbackMatchDetails(formA, formB),
+                        tablesA,
+                        tablesB,
+                        issues);
+                    matchedA.Add(formA);
+                    matchedB.Add(formB);
                     continue;
                 }
 
-                CompareComponentProperties(
-                    ComparisonScope.Form,
-                    formA!.TableLogicalName,
-                    TableDisplayName(formA.TableLogicalName, tablesA, tablesB),
-                    TableClassification(formA.TableLogicalName, tablesA, tablesB),
-                    formA.Key,
-                    Prefer(formA.Name, formB!.Name),
-                    formA.GetProperty,
-                    formB.GetProperty,
-                    FormPropertySeverity,
-                    issues,
-                    environmentAComponentName: formA.Name,
-                    environmentBComponentName: formB.Name,
-                    environmentAComponentId: formA.GetProperty("Form ID"),
-                    environmentBComponentId: formB.GetProperty("Form ID"));
-                CompareFormSecurityRoles(
-                    formA,
-                    formB,
-                    TableDisplayName(formA.TableLogicalName, tablesA, tablesB),
-                    TableClassification(formA.TableLogicalName, tablesA, tablesB),
-                    issues);
+                if (candidatesA.Count > 0 && candidatesB.Count > 0)
+                {
+                    AddAmbiguousFormIdentityIssue(candidatesA, candidatesB, tablesA, tablesB, issues);
+                    foreach (var candidate in candidatesA) matchedA.Add(candidate);
+                    foreach (var candidate in candidatesB) matchedB.Add(candidate);
+                }
             }
+
+            foreach (var form in formsA.Where(form => !matchedA.Contains(form)))
+            {
+                AddFormPresenceIssue(form, DifferenceKind.MissingInEnvironmentB, tablesA, tablesB, issues);
+            }
+
+            foreach (var form in formsB.Where(form => !matchedB.Contains(form)))
+            {
+                AddFormPresenceIssue(form, DifferenceKind.MissingInEnvironmentA, tablesA, tablesB, issues);
+            }
+        }
+
+        private static void CompareFormPair(
+            FormMetadataInfo formA,
+            FormMetadataInfo formB,
+            string additionalDetails,
+            IReadOnlyDictionary<string, TableMetadataInfo> tablesA,
+            IReadOnlyDictionary<string, TableMetadataInfo> tablesB,
+            ICollection<ComparisonIssue> issues)
+        {
+            CompareComponentProperties(
+                ComparisonScope.Form,
+                formA.TableLogicalName,
+                TableDisplayName(formA.TableLogicalName, tablesA, tablesB),
+                TableClassification(formA.TableLogicalName, tablesA, tablesB),
+                formA.Key,
+                Prefer(formA.Name, formB.Name),
+                formA.GetProperty,
+                formB.GetProperty,
+                FormPropertySeverity,
+                issues,
+                additionalDetails,
+                formA.Key,
+                formB.Key,
+                formA.Name,
+                formB.Name,
+                FormId(formA),
+                FormId(formB));
+            CompareFormSecurityRoles(
+                formA,
+                formB,
+                TableDisplayName(formA.TableLogicalName, tablesA, tablesB),
+                TableClassification(formA.TableLogicalName, tablesA, tablesB),
+                issues,
+                additionalDetails);
+        }
+
+        private static void AddFormPresenceIssue(
+            FormMetadataInfo form,
+            DifferenceKind kind,
+            IReadOnlyDictionary<string, TableMetadataInfo> tablesA,
+            IReadOnlyDictionary<string, TableMetadataInfo> tablesB,
+            ICollection<ComparisonIssue> issues)
+        {
+            var missingInB = kind == DifferenceKind.MissingInEnvironmentB;
+            issues.Add(new ComparisonIssue(
+                missingInB ? DifferenceSeverity.High : DifferenceSeverity.Medium,
+                ComparisonScope.Form,
+                kind,
+                form.TableLogicalName,
+                TableDisplayName(form.TableLogicalName, tablesA, tablesB),
+                form.Key,
+                form.Name,
+                "Form presence",
+                missingInB ? "Present" : "Missing",
+                missingInB ? "Missing" : "Present",
+                missingInB
+                    ? "The form exists in Environment A but is missing from Environment B."
+                    : "The form exists in Environment B but is missing from Environment A.",
+                TableClassification(form.TableLogicalName, tablesA, tablesB),
+                environmentAComponentName: form.Name,
+                environmentBComponentName: form.Name,
+                environmentAComponentId: FormId(form),
+                environmentBComponentId: FormId(form)));
+        }
+
+        private static void AddAmbiguousFormIdentityIssue(
+            IReadOnlyList<FormMetadataInfo> candidatesA,
+            IReadOnlyList<FormMetadataInfo> candidatesB,
+            IReadOnlyDictionary<string, TableMetadataInfo> tablesA,
+            IReadOnlyDictionary<string, TableMetadataInfo> tablesB,
+            ICollection<ComparisonIssue> issues)
+        {
+            var first = candidatesA.FirstOrDefault() ?? candidatesB[0];
+            issues.Add(new ComparisonIssue(
+                DifferenceSeverity.High,
+                ComparisonScope.Form,
+                DifferenceKind.Changed,
+                first.TableLogicalName,
+                TableDisplayName(first.TableLogicalName, tablesA, tablesB),
+                first.Key,
+                "Ambiguous form identity",
+                "Form identity",
+                FormatFormCandidates(candidatesA),
+                FormatFormCandidates(candidatesB),
+                "Multiple forms share the same table, unique name, form type and presentation, so a one-to-one fallback match could not be selected. No candidate was discarded.",
+                TableClassification(first.TableLogicalName, tablesA, tablesB),
+                environmentAComponentName: FormatFormNames(candidatesA),
+                environmentBComponentName: FormatFormNames(candidatesB),
+                environmentAComponentId: FormatFormIds(candidatesA),
+                environmentBComponentId: FormatFormIds(candidatesB)));
+        }
+
+        private static IReadOnlyList<FormMetadataInfo> CollapseDuplicateFormIds(
+            IEnumerable<FormMetadataInfo> forms,
+            bool includesUnpublishedMetadata)
+        {
+            var formList = forms.ToList();
+            var withIds = formList
+                .Where(form => FormId(form).Length > 0)
+                .GroupBy(FormId, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group
+                    .OrderByDescending(form => FormRecordPriority(form, includesUnpublishedMetadata))
+                    .ThenBy(form => form.Key, StringComparer.OrdinalIgnoreCase)
+                    .First());
+            return withIds
+                .Concat(formList.Where(form => FormId(form).Length == 0))
+                .OrderBy(form => form.Key, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(form => FormId(form), StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private static IReadOnlyDictionary<string, IReadOnlyList<FormMetadataInfo>> FormsByIdentity(
+            IEnumerable<FormMetadataInfo> forms,
+            Func<FormMetadataInfo, string> identitySelector)
+        {
+            return forms
+                .Select(form => new { Form = form, Identity = identitySelector(form) })
+                .Where(item => item.Identity.Length > 0)
+                .GroupBy(item => item.Identity, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => (IReadOnlyList<FormMetadataInfo>)group.Select(item => item.Form).ToList(),
+                    StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static string FormId(FormMetadataInfo form)
+        {
+            return form.GetProperty("Form ID").Trim();
+        }
+
+        private static string FormFallbackIdentity(FormMetadataInfo form)
+        {
+            var uniqueName = form.GetProperty("Unique name").Trim();
+            if (uniqueName.Length == 0)
+            {
+                const string marker = "|unique:";
+                var markerIndex = form.Key.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+                if (markerIndex >= 0)
+                {
+                    uniqueName = form.Key.Substring(markerIndex + marker.Length).Trim();
+                }
+            }
+
+            if (uniqueName.Length == 0) return string.Empty;
+            return string.Join(
+                "\u001f",
+                form.TableLogicalName.Trim(),
+                uniqueName,
+                form.GetProperty("Form type").Trim(),
+                form.GetProperty("Presentation").Trim());
+        }
+
+        private static string FormFallbackMatchDetails(FormMetadataInfo formA, FormMetadataInfo formB)
+        {
+            return "Fallback matched by table, form unique name, form type and presentation because the Form IDs differ "
+                + $"(Environment A: {DisplayIdentity(FormId(formA))}; Environment B: {DisplayIdentity(FormId(formB))}).";
+        }
+
+        private static int FormRecordPriority(FormMetadataInfo form, bool includesUnpublishedMetadata)
+        {
+            var componentState = form.GetProperty("Component state");
+            if (includesUnpublishedMetadata && componentState == "1") return 3;
+            if (componentState == "0") return 2;
+            if (!includesUnpublishedMetadata && componentState == "1") return 1;
+            return 0;
+        }
+
+        private static string FormatFormCandidates(IEnumerable<FormMetadataInfo> forms)
+        {
+            return string.Join(
+                Environment.NewLine,
+                forms.Select(form =>
+                    $"{Prefer(form.Name, "(unnamed form)")} [ID: {DisplayIdentity(FormId(form))}; "
+                    + $"Unique name: {DisplayIdentity(form.GetProperty("Unique name"))}; "
+                    + $"Type: {DisplayIdentity(form.GetProperty("Form type"))}; "
+                    + $"Presentation: {DisplayIdentity(form.GetProperty("Presentation"))}]"));
+        }
+
+        private static string FormatFormNames(IEnumerable<FormMetadataInfo> forms)
+        {
+            return string.Join(" | ", forms.Select(form => Prefer(form.Name, "(unnamed form)")).Distinct(StringComparer.OrdinalIgnoreCase));
+        }
+
+        private static string FormatFormIds(IEnumerable<FormMetadataInfo> forms)
+        {
+            return string.Join(" | ", forms.Select(FormId).Where(id => id.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase));
+        }
+
+        private static string DisplayIdentity(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? "(not provided)" : value.Trim();
         }
 
         private static void CompareFormSecurityRoles(
@@ -297,13 +495,20 @@ namespace EnvironmentComparison.Services
             FormMetadataInfo formB,
             string tableDisplayName,
             string tableClassification,
-            ICollection<ComparisonIssue> issues)
+            ICollection<ComparisonIssue> issues,
+            string additionalDetails = "")
         {
             var identitiesA = formA.GetProperty("Form security role identities");
             var identitiesB = formB.GetProperty("Form security role identities");
             if (Equal(identitiesA, identitiesB))
             {
                 return;
+            }
+
+            var details = "The security roles allowed to use the form are different.";
+            if (!string.IsNullOrWhiteSpace(additionalDetails))
+            {
+                details += " " + additionalDetails;
             }
 
             issues.Add(new ComparisonIssue(
@@ -317,7 +522,7 @@ namespace EnvironmentComparison.Services
                 "Form security roles",
                 formA.GetProperty("Form security roles"),
                 formB.GetProperty("Form security roles"),
-                "The security roles allowed to use the form are different.",
+                details,
                 tableClassification,
                 environmentAComponentName: formA.Name,
                 environmentBComponentName: formB.Name,

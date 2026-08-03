@@ -117,6 +117,24 @@ namespace EnvironmentComparison.Tests
             CollectionAssert.Contains(
                 environmentA.RetrievedQueries.Single().ColumnSet.Columns,
                 "componentstate");
+            Assert.AreEqual("formid", environmentA.RetrievedQueries.Single().Orders.Single().AttributeName);
+            Assert.IsTrue(environmentA.RetrievedQueries.Single().Criteria.Conditions.Any(condition =>
+                condition.AttributeName == "componentstate"
+                && condition.Operator == ConditionOperator.In));
+        }
+
+        [TestMethod]
+        public void DuplicateRetrievedFormIdsAreCollapsed()
+        {
+            var formId = Guid.Parse("12345678-1234-1234-1234-1234567890ab");
+            var service = new RecordingService();
+            var form = Forms(formId, Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")).Entities.Single();
+            service.RetrieveResults["systemform"] = new EntityCollection(new List<Entity> { form, form });
+
+            var snapshot = new DataverseMetadataService().LoadSnapshot(service, ComparisonAreas.Forms, false);
+
+            Assert.AreEqual(1, snapshot.Forms.Count);
+            Assert.AreEqual(formId.ToString("D"), snapshot.Forms[0].GetProperty("Form ID"));
         }
 
         [TestMethod]

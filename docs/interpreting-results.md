@@ -79,7 +79,7 @@ The plugin found an A-only and B-only column with compatible metadata. Verify wh
 
 ### Many forms or views appear missing
 
-Confirm the connection direction, published/unpublished choice, and permissions. Then inspect component keys in raw JSON. Forms use `UniqueName` when available and views use their saved-query identity; environment-specific publication IDs are not intended to create presence differences.
+Confirm the connection direction, published/unpublished choice, and permissions. Forms match by exact Form ID first, then by a unique combination of table, `UniqueName`, form type, and presentation. A `Form identity` issue means multiple candidates shared that fallback identity and the plugin deliberately did not guess. Views use their saved-query identity.
 
 ### A system view reports Layout XML
 

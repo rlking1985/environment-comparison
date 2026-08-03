@@ -124,6 +124,69 @@ namespace EnvironmentComparison.Tests
         }
 
         [TestMethod]
+        public void MatchesFormsWithDuplicateUniqueNamesByTypeAndPresentation()
+        {
+            var table = Table("new_student");
+            var formsA = new[]
+            {
+                Form("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "shared", "2", "1", "Main form"),
+                Form("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "shared", "7", "1", "Quick create form")
+            };
+            var formsB = new[]
+            {
+                Form("cccccccc-cccc-cccc-cccc-cccccccccccc", "shared", "2", "1", "Main form"),
+                Form("dddddddd-dddd-dddd-dddd-dddddddddddd", "shared", "7", "1", "Quick create form")
+            };
+
+            var result = _service.Compare(
+                new EnvironmentMetadataSnapshot(new[] { table }, formsA, includedAreas: ComparisonAreas.Forms),
+                new EnvironmentMetadataSnapshot(new[] { table }, formsB, includedAreas: ComparisonAreas.Forms));
+
+            Assert.AreEqual(0, result.Issues.Count);
+        }
+
+        [TestMethod]
+        public void ReportsAmbiguousFormIdentityInsteadOfThrowing()
+        {
+            var table = Table("new_student");
+            var formsA = new[]
+            {
+                Form("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "shared", "2", "1", "Main form A1"),
+                Form("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "shared", "2", "1", "Main form A2")
+            };
+            var formsB = new[]
+            {
+                Form("cccccccc-cccc-cccc-cccc-cccccccccccc", "shared", "2", "1", "Main form B")
+            };
+
+            var result = _service.Compare(
+                new EnvironmentMetadataSnapshot(new[] { table }, formsA, includedAreas: ComparisonAreas.Forms),
+                new EnvironmentMetadataSnapshot(new[] { table }, formsB, includedAreas: ComparisonAreas.Forms));
+
+            var issue = result.Issues.Single();
+            Assert.AreEqual("Form identity", issue.PropertyName);
+            StringAssert.Contains(issue.Details, "one-to-one fallback match could not be selected");
+            StringAssert.Contains(issue.EnvironmentAComponentId, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+            StringAssert.Contains(issue.EnvironmentAComponentId, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+            Assert.AreEqual("cccccccc-cccc-cccc-cccc-cccccccccccc", issue.EnvironmentBComponentId);
+        }
+
+        [TestMethod]
+        public void PrefersUnpublishedFormWhenDuplicateFormIdsAreReturned()
+        {
+            var table = Table("new_student");
+            var formId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+            var published = Form(formId, "main", "2", "1", "Main form", "0", "<form version='published' />");
+            var unpublished = Form(formId, "main", "2", "1", "Main form", "1", "<form version='unpublished' />");
+
+            var result = _service.Compare(
+                new EnvironmentMetadataSnapshot(new[] { table }, new[] { published, unpublished }, includedAreas: ComparisonAreas.Forms, includesUnpublishedMetadata: true),
+                new EnvironmentMetadataSnapshot(new[] { table }, new[] { unpublished }, includedAreas: ComparisonAreas.Forms, includesUnpublishedMetadata: true));
+
+            Assert.AreEqual(0, result.Issues.Count);
+        }
+
+        [TestMethod]
         public void ReportsDifferentCustomFormSecurityRolesSeparatelyFromFormXml()
         {
             var table = Table("new_student");
@@ -439,6 +502,29 @@ namespace EnvironmentComparison.Tests
                 properties[additionalProperties[index]] = additionalProperties[index + 1];
             }
             return new ColumnMetadataInfo(logicalName, properties);
+        }
+
+        private static FormMetadataInfo Form(
+            string id,
+            string uniqueName,
+            string formType,
+            string presentation,
+            string name,
+            string componentState = "0",
+            string formXml = "<form />")
+        {
+            return new FormMetadataInfo(
+                $"new_student|unique:{uniqueName}",
+                "new_student",
+                name,
+                Properties(
+                    "Form ID", id,
+                    "Unique name", uniqueName,
+                    "Name", name,
+                    "Form type", formType,
+                    "Presentation", presentation,
+                    "Component state", componentState,
+                    "Form XML", formXml));
         }
 
         private static ReportMetadataInfo Report(

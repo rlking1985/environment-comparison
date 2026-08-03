@@ -63,7 +63,7 @@ It checks:
 - security role assignments;
 - normalized Form XML.
 
-Forms are matched by `UniqueName` when populated and otherwise by the System Form component ID (`formid`). The environment-specific `formidunique` value is diagnostic only and is not used as identity.
+Forms are matched by exact System Form component ID (`formid`) first. Unmatched forms use a one-to-one fallback composed of table logical name, `UniqueName`, form type, and presentation. Exact duplicate retrievals with the same Form ID are collapsed; ambiguous fallback groups are reported as an explicit `Form identity` issue instead of silently selecting a candidate. The environment-specific `formidunique` value is diagnostic only and is not used as identity.
 
 Formatting-only XML differences are ignored. Generated `labelid` values and IDs on empty placeholder cells are also ignored. IDs on cells that contain fields, controls, events, data, or meaningful labels remain significant.
 
