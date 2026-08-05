@@ -70,6 +70,28 @@ namespace EnvironmentComparison.Tests
         }
 
         [TestMethod]
+        public void CsvUsesReadableProcessScopeNames()
+        {
+            var issue = new ComparisonIssue(
+                DifferenceSeverity.Critical,
+                ComparisonScope.CloudFlow,
+                DifferenceKind.Changed,
+                string.Empty,
+                string.Empty,
+                "CloudFlow|id:1",
+                "Student notification",
+                "Client data",
+                "A",
+                "B",
+                "Different");
+
+            var csv = new CsvExportService().Create(new[] { issue });
+
+            StringAssert.Contains(csv, "\"Cloud Flow\"");
+            Assert.IsFalse(csv.Contains("\"CloudFlow\""));
+        }
+
+        [TestMethod]
         public void CsvSplitsOversizedValuesIntoExcelSafeColumnsWithoutDataLoss()
         {
             var valueA = new string('A', 70000);

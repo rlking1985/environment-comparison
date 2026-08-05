@@ -122,6 +122,45 @@ namespace EnvironmentComparison.Services
                 ["RDL"] = DifferenceSeverity.Critical
             };
 
+        private static readonly IReadOnlyDictionary<string, DifferenceSeverity> ProcessPropertySeverity =
+            new Dictionary<string, DifferenceSeverity>(StringComparer.Ordinal)
+            {
+                ["Process ID"] = DifferenceSeverity.High,
+                ["Unique name"] = DifferenceSeverity.High,
+                ["Name"] = DifferenceSeverity.Low,
+                ["Description"] = DifferenceSeverity.Low,
+                ["Category"] = DifferenceSeverity.Critical,
+                ["Type"] = DifferenceSeverity.High,
+                ["Primary entity"] = DifferenceSeverity.Critical,
+                ["State"] = DifferenceSeverity.High,
+                ["Status"] = DifferenceSeverity.High,
+                ["Mode"] = DifferenceSeverity.Critical,
+                ["Scope"] = DifferenceSeverity.High,
+                ["On demand"] = DifferenceSeverity.High,
+                ["Subprocess"] = DifferenceSeverity.High,
+                ["Run as"] = DifferenceSeverity.High,
+                ["Language code"] = DifferenceSeverity.Medium,
+                ["Trigger on create"] = DifferenceSeverity.Critical,
+                ["Trigger on delete"] = DifferenceSeverity.Critical,
+                ["Trigger on update columns"] = DifferenceSeverity.Critical,
+                ["Create stage"] = DifferenceSeverity.High,
+                ["Update stage"] = DifferenceSeverity.High,
+                ["Delete stage"] = DifferenceSeverity.High,
+                ["Rank"] = DifferenceSeverity.High,
+                ["Process order"] = DifferenceSeverity.High,
+                ["Log workflow errors"] = DifferenceSeverity.Medium,
+                ["Delete completed jobs"] = DifferenceSeverity.Medium,
+                ["Modern flow type"] = DifferenceSeverity.Critical,
+                ["Business process type"] = DifferenceSeverity.High,
+                ["Process trigger scope"] = DifferenceSeverity.High,
+                ["Definition"] = DifferenceSeverity.Critical,
+                ["Client data"] = DifferenceSeverity.Critical,
+                ["XAML"] = DifferenceSeverity.Critical,
+                ["Connection references"] = DifferenceSeverity.Critical,
+                ["Inputs"] = DifferenceSeverity.Critical,
+                ["Outputs"] = DifferenceSeverity.Critical
+            };
+
         private static readonly HashSet<string> DefinitionProperties =
             new HashSet<string>(StringComparer.Ordinal)
             {
@@ -131,7 +170,13 @@ namespace EnvironmentComparison.Services
                 "Layout XML",
                 "Column set XML",
                 "Default filter",
-                "RDL"
+                "RDL",
+                "Definition",
+                "Client data",
+                "XAML",
+                "Connection references",
+                "Inputs",
+                "Outputs"
             };
 
         public MetadataComparisonResult Compare(
@@ -207,6 +252,11 @@ namespace EnvironmentComparison.Services
             if ((selectedAreas & ComparisonAreas.Reports) != 0)
             {
                 CompareReports(environmentA, environmentB, issues);
+            }
+
+            if ((selectedAreas & (ComparisonAreas.CloudFlows | ComparisonAreas.BusinessRules | ComparisonAreas.Workflows)) != 0)
+            {
+                CompareProcesses(environmentA, environmentB, tablesA, tablesB, selectedAreas, issues);
             }
 
             return new MetadataComparisonResult(environmentA, environmentB, issues);
@@ -766,6 +816,242 @@ namespace EnvironmentComparison.Services
                 + $"({ownCandidates.Count} candidate(s) in this environment and {otherCandidates.Count} in the other environment).";
         }
 
+        private static void CompareProcesses(
+            EnvironmentMetadataSnapshot environmentA,
+            EnvironmentMetadataSnapshot environmentB,
+            IReadOnlyDictionary<string, TableMetadataInfo> tablesA,
+            IReadOnlyDictionary<string, TableMetadataInfo> tablesB,
+            ComparisonAreas selectedAreas,
+            ICollection<ComparisonIssue> issues)
+        {
+            var processesA = environmentA.Processes
+                .Where(process => IsSelectedProcessScope(process.Scope, selectedAreas))
+                .ToDictionary(process => process.Key, StringComparer.OrdinalIgnoreCase);
+            var processesB = environmentB.Processes
+                .Where(process => IsSelectedProcessScope(process.Scope, selectedAreas))
+                .ToDictionary(process => process.Key, StringComparer.OrdinalIgnoreCase);
+            var matchedA = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var matchedB = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var key in processesA.Keys.Intersect(processesB.Keys, StringComparer.OrdinalIgnoreCase))
+            {
+                CompareProcessPair(processesA[key], processesB[key], string.Empty, tablesA, tablesB, issues);
+                matchedA.Add(key);
+                matchedB.Add(key);
+            }
+
+            var remainingA = processesA.Values.Where(process => !matchedA.Contains(process.Key)).ToList();
+            var remainingB = processesB.Values.Where(process => !matchedB.Contains(process.Key)).ToList();
+            var fallbackGroupsA = GroupProcessesByFallbackIdentity(remainingA);
+            var fallbackGroupsB = GroupProcessesByFallbackIdentity(remainingB);
+
+            foreach (var identity in fallbackGroupsA.Keys.Intersect(fallbackGroupsB.Keys, StringComparer.OrdinalIgnoreCase))
+            {
+                var candidatesA = fallbackGroupsA[identity];
+                var candidatesB = fallbackGroupsB[identity];
+                if (candidatesA.Count != 1 || candidatesB.Count != 1)
+                {
+                    continue;
+                }
+
+                var processA = candidatesA[0];
+                var processB = candidatesB[0];
+                var fallbackDetails = "Fallback matched by process category, unique name and primary entity because the process IDs differ. "
+                    + $"Environment A ID: '{ProcessIdValue(processA)}'; Environment B ID: '{ProcessIdValue(processB)}'.";
+                CompareProcessPair(processA, processB, fallbackDetails, tablesA, tablesB, issues);
+                matchedA.Add(processA.Key);
+                matchedB.Add(processB.Key);
+            }
+
+            foreach (var process in remainingA.Where(process => !matchedA.Contains(process.Key)))
+            {
+                AddProcessPresenceIssue(
+                    process,
+                    DifferenceKind.MissingInEnvironmentB,
+                    ProcessFallbackAmbiguityDetails(process, fallbackGroupsA, fallbackGroupsB),
+                    tablesA,
+                    tablesB,
+                    issues);
+            }
+
+            foreach (var process in remainingB.Where(process => !matchedB.Contains(process.Key)))
+            {
+                AddProcessPresenceIssue(
+                    process,
+                    DifferenceKind.MissingInEnvironmentA,
+                    ProcessFallbackAmbiguityDetails(process, fallbackGroupsB, fallbackGroupsA),
+                    tablesA,
+                    tablesB,
+                    issues);
+            }
+        }
+
+        private static void CompareProcessPair(
+            ProcessMetadataInfo processA,
+            ProcessMetadataInfo processB,
+            string fallbackDetails,
+            IReadOnlyDictionary<string, TableMetadataInfo> tablesA,
+            IReadOnlyDictionary<string, TableMetadataInfo> tablesB,
+            ICollection<ComparisonIssue> issues)
+        {
+            var tableLogicalName = Prefer(processA.TableLogicalName, processB.TableLogicalName);
+            CompareComponentProperties(
+                processA.Scope,
+                tableLogicalName,
+                TableDisplayName(tableLogicalName, tablesA, tablesB),
+                TableClassification(tableLogicalName, tablesA, tablesB),
+                processA.Key,
+                ProcessComponentName(processA),
+                property => string.Equals(property, "Process ID", StringComparison.Ordinal)
+                    ? ProcessIdValue(processA)
+                    : processA.GetProperty(property),
+                property => string.Equals(property, "Process ID", StringComparison.Ordinal)
+                    ? ProcessIdValue(processB)
+                    : processB.GetProperty(property),
+                ProcessPropertySeverity,
+                issues,
+                fallbackDetails,
+                processA.Key,
+                processB.Key,
+                ProcessComponentName(processA),
+                ProcessComponentName(processB),
+                ProcessIdValue(processA),
+                ProcessIdValue(processB));
+        }
+
+        private static void AddProcessPresenceIssue(
+            ProcessMetadataInfo process,
+            DifferenceKind kind,
+            string additionalDetails,
+            IReadOnlyDictionary<string, TableMetadataInfo> tablesA,
+            IReadOnlyDictionary<string, TableMetadataInfo> tablesB,
+            ICollection<ComparisonIssue> issues)
+        {
+            var missingInB = kind == DifferenceKind.MissingInEnvironmentB;
+            var scopeName = DisplayScope(process.Scope);
+            var details = missingInB
+                ? $"The {scopeName.ToLowerInvariant()} exists in Environment A but is missing from Environment B."
+                : $"The {scopeName.ToLowerInvariant()} exists in Environment B but is missing from Environment A.";
+            if (!string.IsNullOrWhiteSpace(additionalDetails))
+            {
+                details += " " + additionalDetails;
+            }
+
+            issues.Add(new ComparisonIssue(
+                missingInB ? DifferenceSeverity.High : DifferenceSeverity.Medium,
+                process.Scope,
+                kind,
+                process.TableLogicalName,
+                TableDisplayName(process.TableLogicalName, tablesA, tablesB),
+                process.Key,
+                ProcessComponentName(process),
+                $"{scopeName} presence",
+                missingInB ? "Present" : "Missing",
+                missingInB ? "Missing" : "Present",
+                details,
+                TableClassification(process.TableLogicalName, tablesA, tablesB),
+                environmentAComponentName: ProcessComponentName(process),
+                environmentBComponentName: ProcessComponentName(process),
+                environmentAComponentId: ProcessIdValue(process),
+                environmentBComponentId: ProcessIdValue(process)));
+        }
+
+        private static IReadOnlyDictionary<string, IReadOnlyList<ProcessMetadataInfo>> GroupProcessesByFallbackIdentity(
+            IEnumerable<ProcessMetadataInfo> processes)
+        {
+            return processes
+                .Select(process => new { Process = process, Identity = ProcessFallbackIdentity(process) })
+                .Where(item => !string.IsNullOrEmpty(item.Identity))
+                .GroupBy(item => item.Identity, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => (IReadOnlyList<ProcessMetadataInfo>)group.Select(item => item.Process).ToList(),
+                    StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static string ProcessFallbackIdentity(ProcessMetadataInfo process)
+        {
+            var uniqueName = process.GetProperty("Unique name").Trim();
+            if (uniqueName.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            return string.Join(
+                "\u001f",
+                process.Scope.ToString(),
+                uniqueName,
+                process.GetProperty("Primary entity").Trim());
+        }
+
+        private static string ProcessFallbackAmbiguityDetails(
+            ProcessMetadataInfo process,
+            IReadOnlyDictionary<string, IReadOnlyList<ProcessMetadataInfo>> ownGroups,
+            IReadOnlyDictionary<string, IReadOnlyList<ProcessMetadataInfo>> otherGroups)
+        {
+            var identity = ProcessFallbackIdentity(process);
+            if (identity.Length == 0
+                || !ownGroups.TryGetValue(identity, out var ownCandidates)
+                || !otherGroups.TryGetValue(identity, out var otherCandidates)
+                || (ownCandidates.Count == 1 && otherCandidates.Count == 1))
+            {
+                return string.Empty;
+            }
+
+            return "A fallback match was not used because the process identity was ambiguous "
+                + $"({ownCandidates.Count} candidate(s) in this environment and {otherCandidates.Count} in the other environment).";
+        }
+
+        private static string ProcessIdValue(ProcessMetadataInfo process)
+        {
+            var processId = process.GetProperty("Process ID");
+            const string marker = "|id:";
+            var markerIndex = process.Key.LastIndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            return processId.Length > 0
+                ? processId
+                : markerIndex >= 0
+                    ? process.Key.Substring(markerIndex + marker.Length)
+                    : process.Key;
+        }
+
+        private static string ProcessComponentName(ProcessMetadataInfo process)
+        {
+            var uniqueName = process.GetProperty("Unique name");
+            return string.IsNullOrWhiteSpace(uniqueName)
+                ? process.Name
+                : string.IsNullOrWhiteSpace(process.Name)
+                    ? uniqueName
+                    : $"{process.Name} ({uniqueName})";
+        }
+
+        private static bool IsSelectedProcessScope(ComparisonScope scope, ComparisonAreas areas)
+        {
+            switch (scope)
+            {
+                case ComparisonScope.CloudFlow:
+                    return (areas & ComparisonAreas.CloudFlows) != 0;
+                case ComparisonScope.BusinessRule:
+                    return (areas & ComparisonAreas.BusinessRules) != 0;
+                case ComparisonScope.Workflow:
+                    return (areas & ComparisonAreas.Workflows) != 0;
+                default:
+                    return false;
+            }
+        }
+
+        private static string DisplayScope(ComparisonScope scope)
+        {
+            switch (scope)
+            {
+                case ComparisonScope.CloudFlow:
+                    return "Cloud Flow";
+                case ComparisonScope.BusinessRule:
+                    return "Business Rule";
+                default:
+                    return scope.ToString();
+            }
+        }
+
         private static void CompareComponentProperties(
             ComparisonScope scope,
             string tableLogicalName,
@@ -796,7 +1082,7 @@ namespace EnvironmentComparison.Services
 
                 var definition = IsDefinitionProperty(property.Key);
 
-                var details = $"{scope} setting '{property.Key}' is different.";
+                var details = $"{DisplayScope(scope)} setting '{property.Key}' is different.";
                 if (!string.IsNullOrWhiteSpace(additionalDetails))
                 {
                     details += " " + additionalDetails;

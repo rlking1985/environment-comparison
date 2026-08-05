@@ -80,6 +80,10 @@ namespace EnvironmentComparison.Tests
             StringAssert.Contains(html, "class='action-column'");
             StringAssert.Contains(html, "id='classificationFilter'");
             StringAssert.Contains(html, "All classifications");
+            StringAssert.Contains(html, "<option value='CloudFlow'>Cloud Flow</option>");
+            StringAssert.Contains(html, "<option value='BusinessRule'>Business Rule</option>");
+            StringAssert.Contains(html, "<option>Workflow</option>");
+            StringAssert.Contains(html, "\"scopeDisplay\":");
             StringAssert.Contains(html, "addOptions(elements.classificationFilter, classifications, 'No classification')");
             StringAssert.Contains(html, "filters.classification === '__none__' ? !row.classification : row.classification === filters.classification");
             StringAssert.Contains(html, "'classificationFilter'");

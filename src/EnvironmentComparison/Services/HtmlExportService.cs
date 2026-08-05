@@ -126,6 +126,7 @@ namespace EnvironmentComparison.Services
             WriteString(writer, "severity", issue.Severity.ToString(), true);
             WriteNumber(writer, "severityOrder", (int)issue.Severity, true);
             WriteString(writer, "scope", issue.Scope.ToString(), true);
+            WriteString(writer, "scopeDisplay", DisplayScope(issue.Scope), true);
             WriteString(writer, "difference", DisplayKind(issue.Kind), true);
             WriteBoolean(writer, "inspectable", issue.Kind == DifferenceKind.Changed, true);
             WriteString(writer, "tableLogical", issue.TableLogicalName, true);
@@ -217,6 +218,19 @@ namespace EnvironmentComparison.Services
                     return "Missing in Environment B";
                 default:
                     return "Changed";
+            }
+        }
+
+        private static string DisplayScope(ComparisonScope scope)
+        {
+            switch (scope)
+            {
+                case ComparisonScope.CloudFlow:
+                    return "Cloud Flow";
+                case ComparisonScope.BusinessRule:
+                    return "Business Rule";
+                default:
+                    return scope.ToString();
             }
         }
 
@@ -382,7 +396,7 @@ namespace EnvironmentComparison.Services
       <div class='filters'>
         <div class='field search'><label for='search'>Search results</label><input id='search' type='search' placeholder='Table, component, property, preview or details'><label class='search-options'><input id='searchFullValues' type='checkbox'> Also search complete A/B values (slower)</label></div>
         <div class='field'><label for='severityFilter'>Severity</label><select id='severityFilter'><option value=''>All severities</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option></select></div>
-        <div class='field'><label for='scopeFilter'>Area</label><select id='scopeFilter'><option value=''>All areas</option><option>Table</option><option>Column</option><option>Form</option><option>View</option><option>Report</option></select></div>
+        <div class='field'><label for='scopeFilter'>Area</label><select id='scopeFilter'><option value=''>All areas</option><option>Table</option><option>Column</option><option>Form</option><option>View</option><option>Report</option><option value='CloudFlow'>Cloud Flow</option><option value='BusinessRule'>Business Rule</option><option>Workflow</option></select></div>
         <div class='field'><label for='differenceFilter'>Difference</label><select id='differenceFilter'><option value=''>All differences</option><option>Missing in Environment B</option><option>Missing in Environment A</option><option>Changed</option></select></div>
         <div class='field'><label for='tableFilter'>Table</label><select id='tableFilter'><option value=''>All tables</option></select></div>
         <div class='field'><label for='classificationFilter'>Classification</label><select id='classificationFilter'><option value=''>All classifications</option></select></div>
@@ -646,7 +660,7 @@ namespace EnvironmentComparison.Services
 
     function rowSearchText(row) {
       if (!row._searchText) {
-        row._searchText = normalize([row.severity,row.scope,row.difference,row.tableLogical,row.tableDisplay,row.classification,row.componentA,row.componentAId,row.componentB,row.componentBId,row.componentKey,row.componentName,row.property,row.aPreview,row.bPreview,row.details].join('\n'));
+        row._searchText = normalize([row.severity,row.scopeDisplay,row.difference,row.tableLogical,row.tableDisplay,row.classification,row.componentA,row.componentAId,row.componentB,row.componentBId,row.componentKey,row.componentName,row.property,row.aPreview,row.bPreview,row.details].join('\n'));
       }
       return row._searchText;
     }
@@ -780,7 +794,7 @@ namespace EnvironmentComparison.Services
           badge.textContent = item.severity;
           severityCell.appendChild(badge);
           row.appendChild(severityCell);
-          row.appendChild(textCell(item.scope));
+          row.appendChild(textCell(item.scopeDisplay));
           row.appendChild(textCell(item.difference));
           row.appendChild(textCell(displayTable(item)));
           row.appendChild(textCell(item.classification));
@@ -908,7 +922,7 @@ namespace EnvironmentComparison.Services
 
     function showDetails(row) {
       selectedRow = row;
-      elements.detailHeading.textContent = `${row.scope}: ${row.componentA || row.componentB || row.tableDisplay || row.property}`;
+      elements.detailHeading.textContent = `${row.scopeDisplay}: ${row.componentA || row.componentB || row.tableDisplay || row.property}`;
       elements.detailDescription.textContent = row.details;
       elements.drawerMeta.replaceChildren(
         metaItem('Severity', row.severity),

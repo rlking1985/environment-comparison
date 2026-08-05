@@ -17,7 +17,7 @@ namespace EnvironmentComparison.Services
             var propertyCount = 0;
             writer.WriteLine("{");
             WriteNamedString(writer, 1, "exportType", "Dataverse environment raw metadata", true);
-            WriteNamedNumber(writer, 1, "formatVersion", 3, true);
+            WriteNamedNumber(writer, 1, "formatVersion", 4, true);
             WriteNamedString(
                 writer,
                 1,
@@ -63,6 +63,8 @@ namespace EnvironmentComparison.Services
             WriteViews(writer, snapshot.Views, indent + 1, ref propertyCount);
             writer.WriteLine(",");
             WriteReports(writer, snapshot.Reports, indent + 1, ref propertyCount);
+            writer.WriteLine(",");
+            WriteProcesses(writer, snapshot.Processes, indent + 1, ref propertyCount);
             writer.WriteLine();
             Indent(writer, indent);
             writer.Write("}");
@@ -76,7 +78,10 @@ namespace EnvironmentComparison.Services
                 new { Area = ComparisonAreas.Columns, Name = "Columns" },
                 new { Area = ComparisonAreas.Forms, Name = "Forms" },
                 new { Area = ComparisonAreas.Views, Name = "Views" },
-                new { Area = ComparisonAreas.Reports, Name = "Reports" }
+                new { Area = ComparisonAreas.Reports, Name = "Reports" },
+                new { Area = ComparisonAreas.CloudFlows, Name = "CloudFlows" },
+                new { Area = ComparisonAreas.BusinessRules, Name = "BusinessRules" },
+                new { Area = ComparisonAreas.Workflows, Name = "Workflows" }
             }.Where(item => (areas & item.Area) != 0).Select(item => item.Name).ToList();
 
             Indent(writer, indent);
@@ -98,7 +103,10 @@ namespace EnvironmentComparison.Services
             WriteNamedNumber(writer, indent + 1, "columns", snapshot.ColumnCount, true);
             WriteNamedNumber(writer, indent + 1, "forms", snapshot.Forms.Count, true);
             WriteNamedNumber(writer, indent + 1, "views", snapshot.Views.Count, true);
-            WriteNamedNumber(writer, indent + 1, "reports", snapshot.Reports.Count, false);
+            WriteNamedNumber(writer, indent + 1, "reports", snapshot.Reports.Count, true);
+            WriteNamedNumber(writer, indent + 1, "cloudFlows", snapshot.Processes.Count(process => process.Scope == ComparisonScope.CloudFlow), true);
+            WriteNamedNumber(writer, indent + 1, "businessRules", snapshot.Processes.Count(process => process.Scope == ComparisonScope.BusinessRule), true);
+            WriteNamedNumber(writer, indent + 1, "workflows", snapshot.Processes.Count(process => process.Scope == ComparisonScope.Workflow), false);
             Indent(writer, indent);
             writer.Write("}");
         }
@@ -236,6 +244,35 @@ namespace EnvironmentComparison.Services
                 Indent(writer, indent + 1);
                 writer.Write("}");
                 if (index < reports.Count - 1) writer.Write(",");
+                writer.WriteLine();
+            }
+
+            Indent(writer, indent);
+            writer.Write("]");
+        }
+
+        private static void WriteProcesses(
+            TextWriter writer,
+            IReadOnlyList<ProcessMetadataInfo> processes,
+            int indent,
+            ref int propertyCount)
+        {
+            Indent(writer, indent);
+            writer.WriteLine("\"processes\": [");
+            for (var index = 0; index < processes.Count; index++)
+            {
+                var process = processes[index];
+                Indent(writer, indent + 1);
+                writer.WriteLine("{");
+                WriteNamedString(writer, indent + 2, "key", process.Key, true);
+                WriteNamedString(writer, indent + 2, "scope", process.Scope.ToString(), true);
+                WriteNamedString(writer, indent + 2, "tableLogicalName", process.TableLogicalName, true);
+                WriteNamedString(writer, indent + 2, "name", process.Name, true);
+                WriteProperties(writer, process.Properties, indent + 2, "properties", ref propertyCount);
+                writer.WriteLine();
+                Indent(writer, indent + 1);
+                writer.Write("}");
+                if (index < processes.Count - 1) writer.Write(",");
                 writer.WriteLine();
             }
 

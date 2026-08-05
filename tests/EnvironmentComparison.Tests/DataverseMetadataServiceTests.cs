@@ -364,6 +364,101 @@ namespace EnvironmentComparison.Tests
         }
 
         [TestMethod]
+        public void LoadsCloudFlowsBusinessRulesAndWorkflowsFromSelectedReadOnlyProcessCategories()
+        {
+            var cloudFlow = Process(
+                Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+                5,
+                "contoso_cloudflow",
+                "Student notification flow",
+                "none");
+            cloudFlow["clientdata"] = "{\"trigger\":{\"type\":\"Dataverse\"},\"actions\":[\"Notify\"]}";
+            var businessRule = Process(
+                Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+                2,
+                "contoso_businessrule",
+                "Require student code",
+                "contact");
+            businessRule["xaml"] = "<Activity><Sequence><Assign /></Sequence></Activity>";
+            var workflow = Process(
+                Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+                0,
+                "contoso_workflow",
+                "Update account status",
+                "account");
+            workflow["triggeroncreate"] = true;
+            var service = new RecordingService();
+            service.RetrieveResults["workflow"] = new EntityCollection(new List<Entity> { cloudFlow, businessRule, workflow });
+
+            var snapshot = new DataverseMetadataService().LoadSnapshot(
+                service,
+                ComparisonAreas.CloudFlows | ComparisonAreas.BusinessRules | ComparisonAreas.Workflows,
+                false);
+
+            Assert.AreEqual(3, snapshot.Processes.Count);
+            CollectionAssert.AreEquivalent(
+                new[] { ComparisonScope.CloudFlow, ComparisonScope.BusinessRule, ComparisonScope.Workflow },
+                snapshot.Processes.Select(process => process.Scope).ToArray());
+            Assert.AreEqual(string.Empty, snapshot.Processes.Single(process => process.Scope == ComparisonScope.CloudFlow).TableLogicalName);
+            Assert.AreEqual("contact", snapshot.Processes.Single(process => process.Scope == ComparisonScope.BusinessRule).TableLogicalName);
+            StringAssert.StartsWith(snapshot.Processes.Single(process => process.Scope == ComparisonScope.CloudFlow).GetProperty("Client data"), "{");
+            var query = service.RetrievedQueries.Single(item => item.EntityName == "workflow");
+            Assert.AreEqual(100, query.PageInfo.Count);
+            CollectionAssert.Contains(query.ColumnSet.Columns, "workflowidunique");
+            CollectionAssert.Contains(query.ColumnSet.Columns, "clientdata");
+            CollectionAssert.Contains(query.ColumnSet.Columns, "xaml");
+            Assert.IsTrue(query.Criteria.Conditions.Any(condition =>
+                condition.AttributeName == "category"
+                && condition.Operator == ConditionOperator.In
+                && condition.Values.Cast<object>().Select(Convert.ToInt32).OrderBy(value => value).SequenceEqual(new[] { 0, 2, 5 })));
+            Assert.IsTrue(query.Criteria.Conditions.Any(condition =>
+                condition.AttributeName == "type"
+                && condition.Operator == ConditionOperator.Equal
+                && Convert.ToInt32(condition.Values.Single()) == 1));
+            Assert.IsTrue(query.Criteria.Conditions.Any(condition =>
+                condition.AttributeName == "componentstate"
+                && condition.Operator == ConditionOperator.In));
+            Assert.AreEqual(0, service.WriteAttempts);
+        }
+
+        [TestMethod]
+        public void IncludeUnpublishedUsesReadOnlyUnpublishedRequestForProcesses()
+        {
+            var service = new RecordingService();
+            service.UnpublishedRetrieveResults["workflow"] = new EntityCollection(new List<Entity>
+            {
+                Process(
+                    Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+                    5,
+                    "contoso_cloudflow",
+                    "Student notification flow",
+                    "none")
+            });
+
+            var snapshot = new DataverseMetadataService().LoadSnapshot(service, ComparisonAreas.CloudFlows, true);
+
+            Assert.AreEqual(1, snapshot.Processes.Count);
+            CollectionAssert.AreEqual(new[] { "workflow" }, service.UnpublishedRetrievedEntityNames.ToArray());
+            Assert.AreEqual(0, service.RetrievedEntityNames.Count);
+            Assert.AreEqual(100, service.RetrievedQueries.Single().PageInfo.Count);
+            Assert.AreEqual(0, service.WriteAttempts);
+        }
+
+        [TestMethod]
+        public void StructuredDefinitionNormalizationIgnoresJsonPropertyOrderAndFormatting()
+        {
+            const string first = "{\"trigger\":{\"type\":\"Dataverse\",\"table\":\"account\"},\"enabled\":true}";
+            const string second = "{\n  \"enabled\": true,\n  \"trigger\": { \"table\": \"account\", \"type\": \"Dataverse\" }\n}";
+
+            Assert.AreEqual(
+                DataverseMetadataService.NormalizeStructuredDefinition(first),
+                DataverseMetadataService.NormalizeStructuredDefinition(second));
+            Assert.AreEqual(
+                DataverseMetadataService.DefinitionFingerprint(first),
+                DataverseMetadataService.DefinitionFingerprint(second));
+        }
+
+        [TestMethod]
         public void XmlNormalizationIgnoresFormattingAndAttributeOrderAndRetainsFullXml()
         {
             const string first = "<form a='1' b='2'><tab>Value</tab></form>";
@@ -462,6 +557,22 @@ namespace EnvironmentComparison.Tests
             form["name"] = "Information";
             form["formxml"] = "\r\n<form />\r\n";
             return new EntityCollection(new List<Entity> { form });
+        }
+
+        private static Entity Process(Guid id, int category, string uniqueName, string name, string primaryEntity)
+        {
+            var process = new Entity("workflow", id);
+            process["workflowid"] = id;
+            process["workflowidunique"] = Guid.NewGuid();
+            process["category"] = new OptionSetValue(category);
+            process["type"] = new OptionSetValue(1);
+            process["componentstate"] = new OptionSetValue(0);
+            process["uniquename"] = uniqueName;
+            process["name"] = name;
+            process["primaryentity"] = primaryEntity;
+            process["statecode"] = new OptionSetValue(1);
+            process["statuscode"] = new OptionSetValue(2);
+            return process;
         }
 
         private static EntityCollection FormWithRole(Guid formId, Guid roleId)

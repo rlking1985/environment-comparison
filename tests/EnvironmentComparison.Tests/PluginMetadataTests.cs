@@ -130,7 +130,16 @@ namespace EnvironmentComparison.Tests
                 var tableRegexBox = (TextBox)type
                     .GetField("_tableLogicalNameRegexBox", BindingFlags.Instance | BindingFlags.NonPublic)
                     !.GetValue(control)!;
-                foreach (var fieldName in new[] { "_tablesCheckBox", "_columnsCheckBox", "_formsCheckBox", "_viewsCheckBox" })
+                foreach (var fieldName in new[]
+                {
+                    "_tablesCheckBox",
+                    "_columnsCheckBox",
+                    "_formsCheckBox",
+                    "_viewsCheckBox",
+                    "_cloudFlowsCheckBox",
+                    "_businessRulesCheckBox",
+                    "_workflowsCheckBox"
+                })
                 {
                     ((CheckBox)type.GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(control)!).Checked = false;
                 }

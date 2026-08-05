@@ -43,7 +43,8 @@ namespace EnvironmentComparison.Services
                 snapshot.Views.Where(view => IncludeTableScopedItem(view.TableLogicalName, tableLogicalNameRegex)),
                 snapshot.IncludedAreas,
                 snapshot.IncludesUnpublishedMetadata,
-                snapshot.Reports);
+                snapshot.Reports,
+                snapshot.Processes.Where(process => IncludeTableScopedItem(process.TableLogicalName, tableLogicalNameRegex)));
         }
 
         private static bool IncludeTableScopedItem(string tableLogicalName, Regex tableLogicalNameRegex)

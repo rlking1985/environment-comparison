@@ -111,6 +111,44 @@ namespace EnvironmentComparison.Tests
             StringAssert.Contains(json, "<Report xmlns=\\\"urn:report\\\">");
         }
 
+        [TestMethod]
+        public void ExportsProcessDefinitionsAndCountsAsStructuredJson()
+        {
+            var process = new ProcessMetadataInfo(
+                "CloudFlow|id:12345678-aaaa-bbbb-cccc-1234567890ab",
+                ComparisonScope.CloudFlow,
+                string.Empty,
+                "Student notification",
+                Properties(
+                    "Process ID", "12345678-aaaa-bbbb-cccc-1234567890ab",
+                    "Unique name", "contoso_studentnotification",
+                    "Client data", "{\"actions\":[\"Email\"]}",
+                    "Raw Client data", "{ \"actions\": [ \"Email\" ] }"));
+            var snapshot = new EnvironmentMetadataSnapshot(
+                Array.Empty<TableMetadataInfo>(),
+                includedAreas: ComparisonAreas.CloudFlows,
+                processes: new[] { process });
+            var result = new MetadataComparisonService().Compare(snapshot, snapshot);
+
+            string json;
+            int propertyCount;
+            using (var writer = new StringWriter())
+            {
+                propertyCount = new RawMetadataExportService().Write(writer, result);
+                json = writer.ToString();
+            }
+
+            Assert.AreEqual(8, propertyCount);
+            StringAssert.Contains(json, "\"formatVersion\": 4");
+            StringAssert.Contains(json, "\"includedAreas\": [\"CloudFlows\"]");
+            StringAssert.Contains(json, "\"cloudFlows\": 1");
+            StringAssert.Contains(json, "\"businessRules\": 0");
+            StringAssert.Contains(json, "\"workflows\": 0");
+            StringAssert.Contains(json, "\"processes\": [");
+            StringAssert.Contains(json, "\"scope\": \"CloudFlow\"");
+            StringAssert.Contains(json, "contoso_studentnotification");
+        }
+
         private static Dictionary<string, string> Properties(params string[] values)
         {
             var properties = new Dictionary<string, string>(StringComparer.Ordinal);

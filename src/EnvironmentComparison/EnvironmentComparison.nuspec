@@ -14,7 +14,7 @@
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>Read-only comparison of Dataverse tables, columns, forms, system views, and organization SSRS reports between two environments. Highlights missing components and important definition differences while excluding managed-versus-unmanaged noise.</description>
     <summary>Compare important Dataverse metadata safely between environments.</summary>
-    <releaseNotes>Uses a stable public PNG logo URL for XrmToolBox portal validation. The table logical-name regex remains empty by default.</releaseNotes>
+    <releaseNotes>Separates Environment A and Environment B component names and IDs, and prevents duplicate form identities from terminating comparisons by using exact-ID and unambiguous metadata fallback matching.</releaseNotes>
     <copyright>Copyright © 2026 Ross King</copyright>
     <tags>XrmToolBox Plugins Dataverse Dynamics365 Metadata Tables Columns Reports SSRS Comparison</tags>
     <dependencies>

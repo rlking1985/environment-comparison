@@ -415,6 +415,73 @@ namespace EnvironmentComparison.Tests
         }
 
         [TestMethod]
+        public void FallbackMatchesCloudFlowsByStableIdentityAndComparesDefinitions()
+        {
+            var table = Table("account");
+            var processA = Process(
+                ComparisonScope.CloudFlow,
+                "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                "contoso_studentnotification",
+                "Student notification",
+                "account",
+                "Client data", DataverseMetadataService.NormalizeStructuredDefinition("{\"actions\":[\"Email\"],\"trigger\":\"Dataverse\"}"));
+            var processB = Process(
+                ComparisonScope.CloudFlow,
+                "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+                "contoso_studentnotification",
+                "Student notification",
+                "account",
+                "Client data", DataverseMetadataService.NormalizeStructuredDefinition("{\"trigger\":\"Dataverse\",\"actions\":[\"Teams\"]}"));
+
+            var result = _service.Compare(
+                new EnvironmentMetadataSnapshot(
+                    new[] { table },
+                    includedAreas: ComparisonAreas.CloudFlows,
+                    processes: new[] { processA }),
+                new EnvironmentMetadataSnapshot(
+                    new[] { table },
+                    includedAreas: ComparisonAreas.CloudFlows,
+                    processes: new[] { processB }));
+
+            CollectionAssert.AreEquivalent(
+                new[] { "Process ID", "Client data" },
+                result.Issues.Select(issue => issue.PropertyName).ToArray());
+            var definitionIssue = result.Issues.Single(issue => issue.PropertyName == "Client data");
+            Assert.AreEqual(ComparisonScope.CloudFlow, definitionIssue.Scope);
+            Assert.AreEqual(DifferenceSeverity.Critical, definitionIssue.Severity);
+            Assert.AreEqual("Student notification (contoso_studentnotification)", definitionIssue.EnvironmentAComponent);
+            Assert.AreEqual("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", definitionIssue.EnvironmentAComponentId);
+            Assert.AreEqual("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", definitionIssue.EnvironmentBComponentId);
+            Assert.AreEqual("Standard", definitionIssue.TableClassification);
+            StringAssert.StartsWith(definitionIssue.EnvironmentAPreviewValue, "SHA-256 ");
+            Assert.IsTrue(result.Issues.All(issue => issue.Details.Contains("Fallback matched by process category, unique name and primary entity")));
+        }
+
+        [TestMethod]
+        public void DoesNotFallbackMatchAmbiguousProcessIdentities()
+        {
+            var processesA = new[]
+            {
+                Process(ComparisonScope.Workflow, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "contoso_duplicate", "Duplicate", "account"),
+                Process(ComparisonScope.Workflow, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "contoso_duplicate", "Duplicate", "account")
+            };
+            var processesB = new[]
+            {
+                Process(ComparisonScope.Workflow, "cccccccc-cccc-cccc-cccc-cccccccccccc", "contoso_duplicate", "Duplicate", "account"),
+                Process(ComparisonScope.Workflow, "dddddddd-dddd-dddd-dddd-dddddddddddd", "contoso_duplicate", "Duplicate", "account")
+            };
+
+            var result = _service.Compare(
+                new EnvironmentMetadataSnapshot(Array.Empty<TableMetadataInfo>(), includedAreas: ComparisonAreas.Workflows, processes: processesA),
+                new EnvironmentMetadataSnapshot(Array.Empty<TableMetadataInfo>(), includedAreas: ComparisonAreas.Workflows, processes: processesB));
+
+            Assert.AreEqual(4, result.Issues.Count);
+            Assert.IsTrue(result.Issues.All(issue => issue.PropertyName == "Workflow presence"));
+            Assert.IsTrue(result.Issues.All(issue => issue.Details.Contains("fallback match was not used")));
+            Assert.IsTrue(result.Issues.All(issue => issue.Details.Contains("2 candidate(s)")));
+        }
+
+        [TestMethod]
         public void WhitespaceOnlyFormulaDefinitionsAreIgnored()
         {
             var formulaA = DataverseMetadataService.NormalizeDefinition(
@@ -546,6 +613,42 @@ namespace EnvironmentComparison.Tests
             }
 
             return new ReportMetadataInfo("report|id:" + id, name, properties);
+        }
+
+        private static ProcessMetadataInfo Process(
+            ComparisonScope scope,
+            string id,
+            string uniqueName,
+            string name,
+            string primaryEntity,
+            params string[] additionalProperties)
+        {
+            var category = scope == ComparisonScope.CloudFlow
+                ? "5"
+                : scope == ComparisonScope.BusinessRule
+                    ? "2"
+                    : "0";
+            var properties = Properties(
+                "Process ID", id,
+                "Unique name", uniqueName,
+                "Name", name,
+                "Category", category,
+                "Type", "1",
+                "Primary entity", primaryEntity,
+                "Client data", "{}",
+                "XAML", string.Empty,
+                "Definition", string.Empty);
+            for (var index = 0; index < additionalProperties.Length; index += 2)
+            {
+                properties[additionalProperties[index]] = additionalProperties[index + 1];
+            }
+
+            return new ProcessMetadataInfo(
+                scope + "|id:" + id,
+                scope,
+                string.Equals(primaryEntity, "none", StringComparison.OrdinalIgnoreCase) ? string.Empty : primaryEntity,
+                name,
+                properties);
         }
 
         private static Dictionary<string, string> Properties(params string[] values)

@@ -13,6 +13,8 @@ using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Messages;
 using Microsoft.Xrm.Sdk.Metadata;
 using Microsoft.Xrm.Sdk.Query;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace EnvironmentComparison.Services
 {
@@ -21,6 +23,10 @@ namespace EnvironmentComparison.Services
         private const int PublishedPageSize = 5000;
         private const int UnpublishedDefinitionPageSize = 250;
         private const int ReportDefinitionPageSize = 25;
+        private const int ProcessDefinitionPageSize = 100;
+        private const int WorkflowCategory = 0;
+        private const int BusinessRuleCategory = 2;
+        private const int CloudFlowCategory = 5;
 
         private static readonly KeyValuePair<string, string>[] TableProperties =
         {
@@ -147,6 +153,19 @@ namespace EnvironmentComparison.Services
                         $"Loading {(retrieveAsIfPublished ? "unpublished " : string.Empty)}system views page {page:N0}...")));
             }
 
+            var processes = new List<ProcessMetadataInfo>();
+            if ((areas & (ComparisonAreas.CloudFlows | ComparisonAreas.BusinessRules | ComparisonAreas.Workflows)) != 0)
+            {
+                reportProgress?.Invoke(85, "Loading process definitions...");
+                processes.AddRange(LoadProcesses(
+                    service,
+                    areas,
+                    retrieveAsIfPublished,
+                    page => reportProgress?.Invoke(
+                        85,
+                        $"Loading {(retrieveAsIfPublished ? "unpublished " : string.Empty)}process definitions page {page:N0}...")));
+            }
+
             var reports = new List<ReportMetadataInfo>();
             if ((areas & ComparisonAreas.Reports) != 0)
             {
@@ -161,7 +180,7 @@ namespace EnvironmentComparison.Services
             }
 
             reportProgress?.Invoke(100, "Metadata snapshot loaded.");
-            return new EnvironmentMetadataSnapshot(tables, forms, views, areas, retrieveAsIfPublished, reports);
+            return new EnvironmentMetadataSnapshot(tables, forms, views, areas, retrieveAsIfPublished, reports, processes);
         }
 
         private static TableMetadataInfo ToTable(EntityMetadata metadata, bool includeColumns)
@@ -422,6 +441,207 @@ namespace EnvironmentComparison.Services
                 };
                 yield return new ViewMetadataInfo(key, table, name, properties);
             }
+        }
+
+        private static IEnumerable<ProcessMetadataInfo> LoadProcesses(
+            IOrganizationService service,
+            ComparisonAreas areas,
+            bool includeUnpublished,
+            Action<int>? pageLoaded)
+        {
+            var categories = SelectedProcessCategories(areas);
+            if (categories.Count == 0)
+            {
+                yield break;
+            }
+
+            var query = new QueryExpression("workflow")
+            {
+                ColumnSet = new ColumnSet(
+                    "workflowid",
+                    "workflowidunique",
+                    "uniquename",
+                    "name",
+                    "description",
+                    "category",
+                    "type",
+                    "primaryentity",
+                    "statecode",
+                    "statuscode",
+                    "mode",
+                    "scope",
+                    "ondemand",
+                    "subprocess",
+                    "runas",
+                    "languagecode",
+                    "triggeroncreate",
+                    "triggerondelete",
+                    "triggeronupdateattributelist",
+                    "createstage",
+                    "updatestage",
+                    "deletestage",
+                    "rank",
+                    "processorder",
+                    "syncworkflowlogonfailure",
+                    "asyncautodelete",
+                    "modernflowtype",
+                    "businessprocesstype",
+                    "processtriggerscope",
+                    "processtriggerformid",
+                    "definition",
+                    "clientdata",
+                    "xaml",
+                    "connectionreferences",
+                    "inputs",
+                    "outputs",
+                    "metadata",
+                    "componentstate",
+                    "solutionid",
+                    "ismanaged",
+                    "introducedversion",
+                    "activeworkflowid",
+                    "parentworkflowid")
+            };
+            query.Criteria.AddCondition("category", ConditionOperator.In, categories.Cast<object>().ToArray());
+            query.Criteria.AddCondition("type", ConditionOperator.Equal, 1);
+            query.Criteria.AddCondition("componentstate", ConditionOperator.In, 0, 1);
+            query.AddOrder("workflowid", OrderType.Ascending);
+
+            var entities = CanonicalProcessEntities(
+                RetrieveAll(service, query, includeUnpublished, pageLoaded, ProcessDefinitionPageSize),
+                includeUnpublished);
+            foreach (var entity in entities)
+            {
+                var category = EntityOptionValue(entity, "category");
+                var scope = ProcessScope(category);
+                if (!scope.HasValue)
+                {
+                    continue;
+                }
+
+                var processId = EntityGuid(entity, "workflowid") ?? entity.Id;
+                var name = EntityValue(entity, "name");
+                var primaryEntity = EntityValue(entity, "primaryentity");
+                var rawDefinition = EntityRawValue(entity, "definition");
+                var rawClientData = EntityRawValue(entity, "clientdata");
+                var rawXaml = EntityRawValue(entity, "xaml");
+                var rawConnectionReferences = EntityRawValue(entity, "connectionreferences");
+                var rawInputs = EntityRawValue(entity, "inputs");
+                var rawOutputs = EntityRawValue(entity, "outputs");
+                var rawMetadata = EntityRawValue(entity, "metadata");
+                var properties = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["Process ID"] = processId.ToString("D"),
+                    ["Process ID unique"] = EntityValue(entity, "workflowidunique"),
+                    ["Unique name"] = EntityValue(entity, "uniquename"),
+                    ["Name"] = name,
+                    ["Description"] = EntityValue(entity, "description"),
+                    ["Category"] = EntityValue(entity, "category"),
+                    ["Type"] = EntityValue(entity, "type"),
+                    ["Primary entity"] = primaryEntity,
+                    ["State"] = EntityValue(entity, "statecode"),
+                    ["Status"] = EntityValue(entity, "statuscode"),
+                    ["Mode"] = EntityValue(entity, "mode"),
+                    ["Scope"] = EntityValue(entity, "scope"),
+                    ["On demand"] = EntityValue(entity, "ondemand"),
+                    ["Subprocess"] = EntityValue(entity, "subprocess"),
+                    ["Run as"] = EntityValue(entity, "runas"),
+                    ["Language code"] = EntityValue(entity, "languagecode"),
+                    ["Trigger on create"] = EntityValue(entity, "triggeroncreate"),
+                    ["Trigger on delete"] = EntityValue(entity, "triggerondelete"),
+                    ["Trigger on update columns"] = NormalizeDelimitedList(EntityRawValue(entity, "triggeronupdateattributelist")),
+                    ["Create stage"] = EntityValue(entity, "createstage"),
+                    ["Update stage"] = EntityValue(entity, "updatestage"),
+                    ["Delete stage"] = EntityValue(entity, "deletestage"),
+                    ["Rank"] = EntityValue(entity, "rank"),
+                    ["Process order"] = EntityValue(entity, "processorder"),
+                    ["Log workflow errors"] = EntityValue(entity, "syncworkflowlogonfailure"),
+                    ["Delete completed jobs"] = EntityValue(entity, "asyncautodelete"),
+                    ["Modern flow type"] = EntityValue(entity, "modernflowtype"),
+                    ["Business process type"] = EntityValue(entity, "businessprocesstype"),
+                    ["Process trigger scope"] = EntityValue(entity, "processtriggerscope"),
+                    ["Process trigger form ID"] = EntityValue(entity, "processtriggerformid"),
+                    ["Definition"] = NormalizeStructuredDefinition(rawDefinition),
+                    ["Client data"] = NormalizeStructuredDefinition(rawClientData),
+                    ["XAML"] = NormalizeStructuredDefinition(rawXaml),
+                    ["Connection references"] = NormalizeStructuredDefinition(rawConnectionReferences),
+                    ["Inputs"] = NormalizeStructuredDefinition(rawInputs),
+                    ["Outputs"] = NormalizeStructuredDefinition(rawOutputs),
+                    ["Metadata"] = NormalizeStructuredDefinition(rawMetadata),
+                    ["Component state"] = EntityValue(entity, "componentstate"),
+                    ["Solution ID"] = EntityValue(entity, "solutionid"),
+                    ["Managed"] = EntityValue(entity, "ismanaged"),
+                    ["Introduced version"] = EntityValue(entity, "introducedversion"),
+                    ["Active process ID"] = EntityValue(entity, "activeworkflowid"),
+                    ["Parent process ID"] = EntityValue(entity, "parentworkflowid"),
+                    ["Raw Definition"] = rawDefinition,
+                    ["Raw Client data"] = rawClientData,
+                    ["Raw XAML"] = rawXaml,
+                    ["Raw Connection references"] = rawConnectionReferences,
+                    ["Raw Inputs"] = rawInputs,
+                    ["Raw Outputs"] = rawOutputs,
+                    ["Raw Metadata"] = rawMetadata
+                };
+                yield return new ProcessMetadataInfo(
+                    $"{scope.Value}|id:{processId:D}",
+                    scope.Value,
+                    NormalizeProcessTableLogicalName(primaryEntity),
+                    name,
+                    properties);
+            }
+        }
+
+        private static IReadOnlyList<Entity> CanonicalProcessEntities(
+            IEnumerable<Entity> entities,
+            bool includeUnpublished)
+        {
+            return entities
+                .GroupBy(entity => EntityGuid(entity, "workflowid") ?? entity.Id)
+                .Select(group => group
+                    .OrderByDescending(entity => ProcessRecordPriority(entity, includeUnpublished))
+                    .ThenBy(entity => entity.Id)
+                    .First())
+                .ToList();
+        }
+
+        private static int ProcessRecordPriority(Entity entity, bool includeUnpublished)
+        {
+            var componentState = EntityValue(entity, "componentstate");
+            if (includeUnpublished && componentState == "1") return 3;
+            if (componentState == "0") return 2;
+            if (!includeUnpublished && componentState == "1") return 1;
+            return 0;
+        }
+
+        private static IReadOnlyList<int> SelectedProcessCategories(ComparisonAreas areas)
+        {
+            var categories = new List<int>();
+            if ((areas & ComparisonAreas.Workflows) != 0) categories.Add(WorkflowCategory);
+            if ((areas & ComparisonAreas.BusinessRules) != 0) categories.Add(BusinessRuleCategory);
+            if ((areas & ComparisonAreas.CloudFlows) != 0) categories.Add(CloudFlowCategory);
+            return categories;
+        }
+
+        private static ComparisonScope? ProcessScope(int? category)
+        {
+            switch (category)
+            {
+                case WorkflowCategory:
+                    return ComparisonScope.Workflow;
+                case BusinessRuleCategory:
+                    return ComparisonScope.BusinessRule;
+                case CloudFlowCategory:
+                    return ComparisonScope.CloudFlow;
+                default:
+                    return null;
+            }
+        }
+
+        private static string NormalizeProcessTableLogicalName(string primaryEntity)
+        {
+            return string.Equals(primaryEntity?.Trim(), "none", StringComparison.OrdinalIgnoreCase)
+                ? string.Empty
+                : primaryEntity?.Trim() ?? string.Empty;
         }
 
         private static IEnumerable<ReportMetadataInfo> LoadReports(
@@ -748,6 +968,17 @@ namespace EnvironmentComparison.Services
                 : (Guid?)null;
         }
 
+        private static int? EntityOptionValue(Entity entity, string attributeName)
+        {
+            if (!entity.Attributes.TryGetValue(attributeName, out var value) || value == null)
+            {
+                return null;
+            }
+
+            if (value is OptionSetValue option) return option.Value;
+            return value is int integer ? integer : (int?)null;
+        }
+
         private static Guid? EntityReferenceId(Entity entity, string attributeName)
         {
             if (!entity.Attributes.TryGetValue(attributeName, out var value) || value == null)
@@ -835,9 +1066,61 @@ namespace EnvironmentComparison.Services
             }
         }
 
+        internal static string NormalizeStructuredDefinition(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+            var trimmed = value.Trim();
+            try
+            {
+                var document = XDocument.Parse(trimmed, LoadOptions.None);
+                return CanonicalElement(document.Root!).ToString(SaveOptions.DisableFormatting);
+            }
+            catch
+            {
+                // Process definitions may be JSON rather than XML.
+            }
+
+            try
+            {
+                return CanonicalJson(JToken.Parse(trimmed)).ToString(Formatting.None);
+            }
+            catch
+            {
+                return trimmed.Replace("\r\n", "\n").Replace('\r', '\n');
+            }
+        }
+
+        private static JToken CanonicalJson(JToken token)
+        {
+            if (token is JObject jsonObject)
+            {
+                return new JObject(jsonObject.Properties()
+                    .OrderBy(property => property.Name, StringComparer.Ordinal)
+                    .Select(property => new JProperty(property.Name, CanonicalJson(property.Value))));
+            }
+
+            if (token is JArray jsonArray)
+            {
+                return new JArray(jsonArray.Select(CanonicalJson));
+            }
+
+            return token.DeepClone();
+        }
+
+        private static string NormalizeDelimitedList(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+            return string.Join(",", value
+                .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(item => item.Trim())
+                .Where(item => item.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(item => item, StringComparer.OrdinalIgnoreCase));
+        }
+
         internal static string DefinitionFingerprint(string xml)
         {
-            var normalized = NormalizeDefinition(xml);
+            var normalized = NormalizeStructuredDefinition(xml);
             if (normalized.Length == 0) return string.Empty;
 
             using (var sha = SHA256.Create())

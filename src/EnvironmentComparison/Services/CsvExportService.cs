@@ -49,7 +49,7 @@ namespace EnvironmentComparison.Services
                 var leadingValues = new[]
                 {
                     issue.Severity.ToString(),
-                    issue.Scope.ToString(),
+                    DisplayScope(issue.Scope),
                     DisplayKind(issue.Kind),
                     issue.TableLogicalName,
                     issue.TableDisplayName,
@@ -175,6 +175,19 @@ namespace EnvironmentComparison.Services
                     return "Missing in Environment B";
                 default:
                     return "Changed";
+            }
+        }
+
+        private static string DisplayScope(ComparisonScope scope)
+        {
+            switch (scope)
+            {
+                case ComparisonScope.CloudFlow:
+                    return "Cloud Flow";
+                case ComparisonScope.BusinessRule:
+                    return "Business Rule";
+                default:
+                    return scope.ToString();
             }
         }
     }

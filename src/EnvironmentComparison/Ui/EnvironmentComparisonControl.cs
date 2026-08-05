@@ -57,6 +57,9 @@ namespace EnvironmentComparison.Ui
         private readonly CheckBox _formsCheckBox = new CheckBox();
         private readonly CheckBox _viewsCheckBox = new CheckBox();
         private readonly CheckBox _reportsCheckBox = new CheckBox();
+        private readonly CheckBox _cloudFlowsCheckBox = new CheckBox();
+        private readonly CheckBox _businessRulesCheckBox = new CheckBox();
+        private readonly CheckBox _workflowsCheckBox = new CheckBox();
         private readonly CheckBox _unpublishedCheckBox = new CheckBox();
         private readonly TextBox _searchBox = new TextBox();
         private readonly Label _tableLogicalNameRegexLabel = new Label();
@@ -89,7 +92,10 @@ namespace EnvironmentComparison.Ui
         private const ComparisonAreas TableAssociatedAreas = ComparisonAreas.TableMetadata
             | ComparisonAreas.Columns
             | ComparisonAreas.Forms
-            | ComparisonAreas.Views;
+            | ComparisonAreas.Views
+            | ComparisonAreas.CloudFlows
+            | ComparisonAreas.BusinessRules
+            | ComparisonAreas.Workflows;
 
         public EnvironmentComparisonControl()
         {
@@ -148,7 +154,7 @@ namespace EnvironmentComparison.Ui
             var version = GetType().Assembly.GetName().Version?.ToString() ?? "unknown";
             MessageBox.Show(
                 this,
-                $"Environment Comparison {version}\r\n\r\nRead-only comparison of Dataverse table metadata, columns, forms, system views, and organization SSRS reports. Managed/unmanaged status is intentionally ignored.",
+                $"Environment Comparison {version}\r\n\r\nRead-only comparison of Dataverse table metadata, columns, forms, system views, organization SSRS reports, cloud flows, business rules, and workflows. Managed/unmanaged status is intentionally ignored.",
                 "About Environment Comparison",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
@@ -313,11 +319,14 @@ namespace EnvironmentComparison.Ui
             ConfigureAreaCheckBox(_formsCheckBox, "Forms", true, "System form definitions and important form settings.");
             ConfigureAreaCheckBox(_viewsCheckBox, "System views", true, "System view FetchXML, layout, columns, and important view settings. Personal views are excluded.");
             ConfigureAreaCheckBox(_reportsCheckBox, "SSRS reports", true, "Organization Reporting Services reports, normalized RDL, filters, related tables, categories, and visibility. Personal reports are excluded.");
-            foreach (var checkBox in new[] { _tablesCheckBox, _columnsCheckBox, _formsCheckBox, _viewsCheckBox, _reportsCheckBox })
+            ConfigureAreaCheckBox(_cloudFlowsCheckBox, "Cloud flows", true, "Solution-aware modern cloud-flow identity, activation, definition, connection-reference usage, and important settings.");
+            ConfigureAreaCheckBox(_businessRulesCheckBox, "Business rules", true, "Business-rule identity, table, scope, activation, and normalized rule definitions.");
+            ConfigureAreaCheckBox(_workflowsCheckBox, "Workflows", true, "Classic workflow identity, triggers, execution settings, activation, and normalized workflow definitions.");
+            foreach (var checkBox in new[] { _tablesCheckBox, _columnsCheckBox, _formsCheckBox, _viewsCheckBox, _reportsCheckBox, _cloudFlowsCheckBox, _businessRulesCheckBox, _workflowsCheckBox })
             {
                 checkBox.CheckedChanged += (_, __) => ComparisonAreasChanged();
             }
-            areas.Controls.AddRange(new Control[] { _tablesCheckBox, _columnsCheckBox, _formsCheckBox, _viewsCheckBox, _reportsCheckBox });
+            areas.Controls.AddRange(new Control[] { _tablesCheckBox, _columnsCheckBox, _formsCheckBox, _viewsCheckBox, _reportsCheckBox, _cloudFlowsCheckBox, _businessRulesCheckBox, _workflowsCheckBox });
             layout.Controls.Add(areas, 0, 1);
 
             var actions = new FlowLayoutPanel
@@ -382,7 +391,7 @@ namespace EnvironmentComparison.Ui
             _toolTip.SetToolTip(_searchBox, "Search table, component, property, values, and details.");
             var searchFilter = CreateFilterField("Search", _searchBox);
             var tableRegexFilter = CreateTableLogicalNameRegexFilter();
-            ConfigureFilter(_scopeFilter, new[] { "All areas", "Tables", "Columns", "Forms", "Views", "Reports" });
+            ConfigureFilter(_scopeFilter, new[] { "All areas", "Tables", "Columns", "Forms", "Views", "Reports", "Cloud flows", "Business rules", "Workflows" });
             ConfigureFilter(_classificationFilter, new[] { AllClassificationsFilterText });
             ConfigureFilter(_severityFilter, new[] { "All severities", "Critical and high", "Critical only" });
             ConfigureFilter(_differenceFilter, new[] { "All differences", "Missing in Environment B", "Missing in Environment A", "Changed" });
@@ -588,7 +597,7 @@ namespace EnvironmentComparison.Ui
                 {
                     var rowIndex = _grid.Rows.Add(
                         issue.Severity,
-                        issue.Scope,
+                        DisplayScope(issue.Scope),
                         DisplayDifference(issue.Kind),
                         DisplayTable(issue),
                         issue.TableClassification,
@@ -687,7 +696,7 @@ namespace EnvironmentComparison.Ui
                 }
 
                 AddDetail("Severity", issue.Severity.ToString());
-                AddDetail("Area", issue.Scope.ToString());
+                AddDetail("Area", DisplayScope(issue.Scope));
                 AddDetail("Difference", DisplayDifference(issue.Kind));
                 AddDetail("Table", DisplayTable(issue));
                 AddDetail("Table classification", issue.TableClassification);
@@ -865,6 +874,9 @@ namespace EnvironmentComparison.Ui
                 if (_formsCheckBox.Checked) areas |= ComparisonAreas.Forms;
                 if (_viewsCheckBox.Checked) areas |= ComparisonAreas.Views;
                 if (_reportsCheckBox.Checked) areas |= ComparisonAreas.Reports;
+                if (_cloudFlowsCheckBox.Checked) areas |= ComparisonAreas.CloudFlows;
+                if (_businessRulesCheckBox.Checked) areas |= ComparisonAreas.BusinessRules;
+                if (_workflowsCheckBox.Checked) areas |= ComparisonAreas.Workflows;
                 return areas;
             }
         }
@@ -943,6 +955,9 @@ namespace EnvironmentComparison.Ui
             _formsCheckBox.Enabled = !busy;
             _viewsCheckBox.Enabled = !busy;
             _reportsCheckBox.Enabled = !busy;
+            _cloudFlowsCheckBox.Enabled = !busy;
+            _businessRulesCheckBox.Enabled = !busy;
+            _workflowsCheckBox.Enabled = !busy;
             _unpublishedCheckBox.Enabled = !busy;
             UpdateTableLogicalNameRegexAvailability();
             var regexValid = !TableLogicalNameRegexHasError;
@@ -1382,7 +1397,23 @@ namespace EnvironmentComparison.Ui
             if ((areas & ComparisonAreas.Forms) != 0) labels.Add("forms");
             if ((areas & ComparisonAreas.Views) != 0) labels.Add("system views");
             if ((areas & ComparisonAreas.Reports) != 0) labels.Add("SSRS reports");
+            if ((areas & ComparisonAreas.CloudFlows) != 0) labels.Add("cloud flows");
+            if ((areas & ComparisonAreas.BusinessRules) != 0) labels.Add("business rules");
+            if ((areas & ComparisonAreas.Workflows) != 0) labels.Add("workflows");
             return string.Join(", ", labels);
+        }
+
+        private static string DisplayScope(ComparisonScope scope)
+        {
+            switch (scope)
+            {
+                case ComparisonScope.CloudFlow:
+                    return "Cloud Flow";
+                case ComparisonScope.BusinessRule:
+                    return "Business Rule";
+                default:
+                    return scope.ToString();
+            }
         }
 
         private static bool SameSavedConnection(ConnectionDetail first, ConnectionDetail second)

@@ -14,7 +14,10 @@ namespace EnvironmentComparison.Domain
         Forms = 4,
         Views = 8,
         Reports = 16,
-        All = TableMetadata | Columns | Forms | Views | Reports
+        CloudFlows = 32,
+        BusinessRules = 64,
+        Workflows = 128,
+        All = TableMetadata | Columns | Forms | Views | Reports | CloudFlows | BusinessRules | Workflows
     }
 
     public sealed class EnvironmentMetadataSnapshot
@@ -25,7 +28,8 @@ namespace EnvironmentComparison.Domain
             IEnumerable<ViewMetadataInfo>? views = null,
             ComparisonAreas includedAreas = ComparisonAreas.TableMetadata | ComparisonAreas.Columns,
             bool includesUnpublishedMetadata = false,
-            IEnumerable<ReportMetadataInfo>? reports = null)
+            IEnumerable<ReportMetadataInfo>? reports = null,
+            IEnumerable<ProcessMetadataInfo>? processes = null)
         {
             if (tables == null) throw new ArgumentNullException(nameof(tables));
             Tables = new ReadOnlyCollection<TableMetadataInfo>(tables.OrderBy(table => table.LogicalName, StringComparer.OrdinalIgnoreCase).ToList());
@@ -35,6 +39,11 @@ namespace EnvironmentComparison.Domain
                 (views ?? Enumerable.Empty<ViewMetadataInfo>()).OrderBy(view => view.Key, StringComparer.OrdinalIgnoreCase).ToList());
             Reports = new ReadOnlyCollection<ReportMetadataInfo>(
                 (reports ?? Enumerable.Empty<ReportMetadataInfo>()).OrderBy(report => report.Key, StringComparer.OrdinalIgnoreCase).ToList());
+            Processes = new ReadOnlyCollection<ProcessMetadataInfo>(
+                (processes ?? Enumerable.Empty<ProcessMetadataInfo>())
+                    .OrderBy(process => process.Scope)
+                    .ThenBy(process => process.Key, StringComparer.OrdinalIgnoreCase)
+                    .ToList());
             IncludedAreas = includedAreas;
             IncludesUnpublishedMetadata = includesUnpublishedMetadata;
         }
@@ -46,6 +55,8 @@ namespace EnvironmentComparison.Domain
         public IReadOnlyList<ViewMetadataInfo> Views { get; }
 
         public IReadOnlyList<ReportMetadataInfo> Reports { get; }
+
+        public IReadOnlyList<ProcessMetadataInfo> Processes { get; }
 
         public ComparisonAreas IncludedAreas { get; }
 
@@ -117,6 +128,36 @@ namespace EnvironmentComparison.Domain
         public string GetProperty(string name) => Properties.TryGetValue(name, out var value) ? value : string.Empty;
     }
 
+    public sealed class ProcessMetadataInfo
+    {
+        public ProcessMetadataInfo(
+            string key,
+            ComparisonScope scope,
+            string tableLogicalName,
+            string name,
+            IDictionary<string, string> properties)
+        {
+            Key = key ?? throw new ArgumentNullException(nameof(key));
+            Scope = scope;
+            TableLogicalName = tableLogicalName ?? string.Empty;
+            Name = name ?? string.Empty;
+            Properties = new ReadOnlyDictionary<string, string>(
+                new Dictionary<string, string>(properties ?? throw new ArgumentNullException(nameof(properties)), StringComparer.Ordinal));
+        }
+
+        public string Key { get; }
+
+        public ComparisonScope Scope { get; }
+
+        public string TableLogicalName { get; }
+
+        public string Name { get; }
+
+        public IReadOnlyDictionary<string, string> Properties { get; }
+
+        public string GetProperty(string name) => Properties.TryGetValue(name, out var value) ? value : string.Empty;
+    }
+
     public sealed class TableMetadataInfo
     {
         public TableMetadataInfo(
@@ -170,7 +211,10 @@ namespace EnvironmentComparison.Domain
         Column,
         Form,
         View,
-        Report
+        Report,
+        CloudFlow,
+        BusinessRule,
+        Workflow
     }
 
     public enum DifferenceKind
